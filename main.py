@@ -42,7 +42,12 @@ app = FastAPI(title="School ERP System", version="1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://school-erp-frontend-azure.vercel.app",
+        "https://school-erp-frontend-git-main-acme-1310.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
