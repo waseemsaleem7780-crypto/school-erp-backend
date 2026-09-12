@@ -3,11 +3,11 @@ import psycopg2.extras
 import os
 
 DB_CONFIG = {
-    "host": "localhost",
-    "database": "school_db",
-    "user": "school_admin",
-    "password": "school123",
-    "port": "5432"
+    "host": os.getenv("DB_HOST", "localhost"),
+    "database": os.getenv("DB_NAME", "school_db"),
+    "user": os.getenv("DB_USER", "school_admin"),
+    "password": os.getenv("DB_PASSWORD", "school123"),
+    "port": os.getenv("DB_PORT", "5432")
 }
 
 def get_db_connection():
