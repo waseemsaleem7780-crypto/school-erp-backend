@@ -36,6 +36,8 @@ from routes.study_material import router as study_material_router
 from routes.academic_years import router as academic_years_router
 from routes.school_settings import router as school_settings_router
 from routes.dashboard import router as dashboard_router
+from routes.teacher_dashboard import router as teacher_dashboard_router
+from routes.student_dashboard import router as student_dashboard_router
 
 # -------------------- APP SETUP --------------------
 app = FastAPI(title="School ERP System", version="1.0")
@@ -77,6 +79,8 @@ app.include_router(study_material_router, prefix="/api")
 app.include_router(academic_years_router, prefix="/api")
 app.include_router(school_settings_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
+app.include_router(teacher_dashboard_router, prefix="/api")
+app.include_router(student_dashboard_router, prefix="/api")
 
 # -------------------- HOME ENDPOINT --------------------
 @app.get("/")
