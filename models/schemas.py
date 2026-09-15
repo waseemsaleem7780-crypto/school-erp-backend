@@ -362,6 +362,10 @@ class assignmentcreate(BaseModel):
     deadline: date
     file_path: Optional[str] = None
 
+    class Config:
+            from_attributes = True
+    
+
 class assignmentresponse(BaseModel):
     id : int
     student_id : int
