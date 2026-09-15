@@ -354,12 +354,13 @@ class concessionresponse(BaseModel):
         from_attributes = True
 
 class assignmentcreate(BaseModel):
-    student_id : int
-    subject_id : int
-    teacher_id : int    
-    title : str
-    description : str
-    deadline : date
+    student_id: int
+    subject_id: int
+    teacher_id: int
+    title: str
+    description: str
+    deadline: date
+    file_path: Optional[str] = None
 
 class assignmentresponse(BaseModel):
     id : int

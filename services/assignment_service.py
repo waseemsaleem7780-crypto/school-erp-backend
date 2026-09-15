@@ -1,11 +1,11 @@
 from database.db import get_db_connection, get_dict_cursor
 
-def create_assignment(student_id: int, subject_id: int, teacher_id: int, title: str, description: str, deadline: str):
+def create_assignment(student_id: int, subject_id: int, teacher_id: int, title: str, description: str, deadline: str, file_path: str = None):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        "INSERT INTO assignment (student_id, subject_id, teacher_id, title, description, deadline) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
-        (student_id, subject_id, teacher_id, title, description, deadline)
+        "INSERT INTO assignment (student_id, subject_id, teacher_id, title, description, deadline, file_path) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        (student_id, subject_id, teacher_id, title, description, deadline, file_path)
     )
     new_id = cursor.fetchone()["id"]
     conn.commit()
@@ -17,14 +17,15 @@ def create_assignment(student_id: int, subject_id: int, teacher_id: int, title: 
         "teacher_id": teacher_id,
         "title": title,
         "description": description,
-        "deadline": deadline
+        "deadline": str(deadline),
+        "file_path": file_path,
     }
 
 def get_assignments_by_student(student_id: int):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        "SELECT id, student_id, subject_id, teacher_id, title, description, deadline, created_at FROM assignment WHERE student_id = %s ORDER BY deadline ASC",
+        "SELECT id, student_id, subject_id, teacher_id, title, description, deadline, file_path, created_at FROM assignment WHERE student_id = %s ORDER BY deadline ASC",
         (student_id,)
     )
     rows = cursor.fetchall()
@@ -37,8 +38,9 @@ def get_assignments_by_student(student_id: int):
             "teacher_id": row["teacher_id"],
             "title": row["title"],
             "description": row["description"],
-            "deadline": row["deadline"],
-            "created_at": row["created_at"]
+            "deadline": str(row["deadline"]),
+            "file_path": row.get("file_path"),
+            "created_at": str(row["created_at"]),
         }
         for row in rows
     ]
