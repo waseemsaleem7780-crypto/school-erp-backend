@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from models.schemas import assignmentcreate
-from services.assignment_service import create_assignment, get_assignments_by_student
+from services.assignment_service import (
+    create_assignment,
+    get_assignments_by_student,
+    update_assignment,
+    delete_assignment,
+)
 from utils.dependencies import get_current_user
 
 router = APIRouter(prefix="/assignment", tags=["Assignment"])
@@ -29,3 +34,42 @@ def get_assignments(
     current_user: dict = Depends(get_current_user),
 ):
     return get_assignments_by_student(student_id)
+
+
+@router.put("/{assignment_id}")
+def edit_assignment(
+    assignment_id: int,
+    assignment_data: assignmentcreate,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user["role"] not in ["admin", "teacher"]:
+        raise HTTPException(status_code=403, detail="Only teachers can edit")
+    
+    result = update_assignment(
+        assignment_id,
+        assignment_data.title,
+        assignment_data.description,
+        str(assignment_data.deadline),
+        getattr(assignment_data, "file_path", None),
+    )
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    return result
+
+
+@router.delete("/{assignment_id}")
+def remove_assignment(
+    assignment_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user["role"] not in ["admin", "teacher"]:
+        raise HTTPException(status_code=403, detail="Only teachers can delete")
+    
+    result = delete_assignment(assignment_id)
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    return result

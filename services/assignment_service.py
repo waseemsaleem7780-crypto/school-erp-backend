@@ -44,3 +44,36 @@ def get_assignments_by_student(student_id: int):
         }
         for row in rows
     ]
+def update_assignment(assignment_id: int, title: str, description: str, deadline: str, file_path: str = None):
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        "UPDATE assignment SET title = %s, description = %s, deadline = %s, file_path = %s WHERE id = %s RETURNING id",
+        (title, description, deadline, file_path, assignment_id)
+    )
+    result = cursor.fetchone()
+    conn.commit()
+    conn.close()
+    
+    if not result:
+        return None
+    
+    return {
+        "id": assignment_id,
+        "title": title,
+        "description": description,
+        "deadline": str(deadline),
+        "file_path": file_path,
+    }
+def delete_assignment(assignment_id: int):
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute("DELETE FROM assignment WHERE id = %s RETURNING id", (assignment_id,))
+    result = cursor.fetchone()
+    conn.commit()
+    conn.close()
+    
+    if not result:
+        return None
+    
+    return {"message": "Assignment deleted", "id": assignment_id}
