@@ -11,7 +11,10 @@ def create_class(name: str):
     new_id = cursor.fetchone()["id"]
     conn.commit()
     conn.close()
-    return {"id": new_id, "name": name}
+    return {
+        "id": new_id,
+        "name": name
+    }
 
 
 def get_all_classes():
@@ -20,7 +23,10 @@ def get_all_classes():
     cursor.execute("SELECT id, name FROM classes ORDER BY name")
     rows = cursor.fetchall()
     conn.close()
-    return [{"id": row["id"], "name": row["name"]} for row in rows]
+    return [
+        {"id": row["id"], "name": row["name"]}
+        for row in rows
+    ]
 
 
 def update_class(class_id: int, name: str):
@@ -33,10 +39,10 @@ def update_class(class_id: int, name: str):
     result = cursor.fetchone()
     conn.commit()
     conn.close()
-    
+
     if not result:
         return None
-    
+
     return {"id": class_id, "name": name}
 
 
@@ -47,8 +53,8 @@ def delete_class(class_id: int):
     result = cursor.fetchone()
     conn.commit()
     conn.close()
-    
+
     if not result:
         return None
-    
+
     return {"message": "Class deleted", "id": class_id}

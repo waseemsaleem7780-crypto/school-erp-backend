@@ -35,12 +35,12 @@ def edit_class(
 ):
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only admin can edit")
-    
+
     result = update_class(class_id, class_data.name)
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Class not found")
-    
+
     return result
 
 
@@ -51,10 +51,10 @@ def remove_class(
 ):
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only admin can delete")
-    
+
     result = delete_class(class_id)
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Class not found")
-    
+
     return result
