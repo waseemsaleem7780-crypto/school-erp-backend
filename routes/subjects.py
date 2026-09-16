@@ -19,8 +19,8 @@ def add_subject(
 ):
     result = create_subject(
         subject_data.name,
-        subject_data.class_id,
-        getattr(subject_data, "teacher_id", None)
+        subject_data.code,
+        subject_data.class_id
     )
     return result
 
@@ -52,8 +52,8 @@ def edit_subject(
     result = update_subject(
         subject_id,
         subject_data.name,
-        subject_data.class_id,
-        getattr(subject_data, "teacher_id", None)
+        subject_data.code,
+        subject_data.class_id
     )
 
     if not result:
