@@ -1,4 +1,3 @@
-cat > ~/Desktop/attendance/main.py << 'PYEOF'
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database.db import init_db
@@ -69,4 +68,3 @@ app.include_router(upload_router, prefix="/api")
 @app.get("/")
 def home():
     return {"message": "School ERP System is Running!", "total_modules": 20}
-PYEOF
