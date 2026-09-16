@@ -7,6 +7,7 @@ from services.student_service import (
     update_student,
     delete_student,
 )
+from database.db import get_db_connection, get_dict_cursor
 from utils.dependencies import get_current_user
 
 router = APIRouter(prefix="/students", tags=["Students"])
@@ -33,6 +34,49 @@ def get_all(
     return get_all_students()
 
 
+# ⚠️ IMPORTANT: Ye routes /{class_id} se PEHLE hone chahiye
+@router.get("/class/{class_id}")
+def get_students_for_class(
+    class_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Ek class ke saare students (Attendance page ke liye)."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        """SELECT id, user_id, roll_number, class_id, section_id 
+           FROM students 
+           WHERE class_id = %s 
+           ORDER BY roll_number""",
+        (class_id,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@router.get("/class/{class_id}/section/{section_id}")
+def get_students_for_class_section(
+    class_id: int,
+    section_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Ek class + section ke students (Attendance page ke liye)."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        """SELECT id, user_id, roll_number, class_id, section_id 
+           FROM students 
+           WHERE class_id = %s AND section_id = %s 
+           ORDER BY roll_number""",
+        (class_id, section_id)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# Ye /{class_id} route LAST mein rakho (warna conflict hoga)
 @router.get("/{class_id}")
 def get_students(
     class_id: int,
@@ -49,17 +93,17 @@ def edit_student(
 ):
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only admin can edit")
-    
+
     result = update_student(
         student_id,
         student_data.roll_number,
         student_data.class_id,
         student_data.section_id
     )
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Student not found")
-    
+
     return result
 
 
@@ -70,10 +114,10 @@ def remove_student(
 ):
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only admin can delete")
-    
+
     result = delete_student(student_id)
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Student not found")
-    
+
     return result
