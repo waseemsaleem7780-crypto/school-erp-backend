@@ -215,3 +215,11 @@ CREATE TABLE IF NOT EXISTS school_settings (
     setting_key VARCHAR(50) NOT NULL CHECK(setting_key IN ('school_name', 'address', 'phone')),
     setting_value TEXT NOT NULL
 );
+
+-- Subjects table
+CREATE TABLE IF NOT EXISTS subjects (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    code VARCHAR(50) NOT NULL,
+    class_id INTEGER REFERENCES classes(id) ON DELETE CASCADE
+);
