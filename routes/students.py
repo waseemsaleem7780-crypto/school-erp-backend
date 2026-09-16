@@ -40,22 +40,14 @@ def get_students_for_class(
     class_id: int,
     current_user: dict = Depends(get_current_user)
 ):
-    """Ek class ke saare students (Attendance page ke liye) — name ke saath."""
+    """Ek class ke saare students (Attendance page ke liye)."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        """SELECT 
-            s.id, 
-            s.user_id, 
-            s.roll_number, 
-            s.class_id, 
-            s.section_id,
-            u.name AS student_name,
-            u.email AS student_email
-           FROM students s
-           LEFT JOIN users u ON u.id = s.user_id
-           WHERE s.class_id = %s 
-           ORDER BY s.roll_number""",
+        """SELECT id, user_id, roll_number, class_id, section_id 
+           FROM students 
+           WHERE class_id = %s 
+           ORDER BY roll_number""",
         (class_id,)
     )
     rows = cursor.fetchall()
@@ -69,22 +61,14 @@ def get_students_for_class_section(
     section_id: int,
     current_user: dict = Depends(get_current_user)
 ):
-    """Ek class + section ke students (Attendance page ke liye) — name ke saath."""
+    """Ek class + section ke students (Attendance page ke liye)."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        """SELECT 
-            s.id, 
-            s.user_id, 
-            s.roll_number, 
-            s.class_id, 
-            s.section_id,
-            u.name AS student_name,
-            u.email AS student_email
-           FROM students s
-           LEFT JOIN users u ON u.id = s.user_id
-           WHERE s.class_id = %s AND s.section_id = %s 
-           ORDER BY s.roll_number""",
+        """SELECT id, user_id, roll_number, class_id, section_id 
+           FROM students 
+           WHERE class_id = %s AND section_id = %s 
+           ORDER BY roll_number""",
         (class_id, section_id)
     )
     rows = cursor.fetchall()

@@ -29,16 +29,7 @@ def get_students_by_class(class_id: int):
     )
     rows = cursor.fetchall()
     conn.close()
-    return [
-        {
-            "id": row["id"],
-            "user_id": row["user_id"],
-            "roll_number": row["roll_number"],
-            "class_id": row["class_id"],
-            "section_id": row["section_id"]
-        }
-        for row in rows
-    ]
+    return [dict(r) for r in rows]
 
 
 def get_all_students():
@@ -49,16 +40,7 @@ def get_all_students():
     )
     rows = cursor.fetchall()
     conn.close()
-    return [
-        {
-            "id": row["id"],
-            "user_id": row["user_id"],
-            "roll_number": row["roll_number"],
-            "class_id": row["class_id"],
-            "section_id": row["section_id"]
-        }
-        for row in rows
-    ]
+    return [dict(r) for r in rows]
 
 
 def update_student(student_id: int, roll_number: str, class_id: int, section_id: int):
@@ -71,10 +53,8 @@ def update_student(student_id: int, roll_number: str, class_id: int, section_id:
     result = cursor.fetchone()
     conn.commit()
     conn.close()
-    
     if not result:
         return None
-    
     return {
         "id": student_id,
         "roll_number": roll_number,
@@ -90,8 +70,6 @@ def delete_student(student_id: int):
     result = cursor.fetchone()
     conn.commit()
     conn.close()
-    
     if not result:
         return None
-    
     return {"message": "Student deleted", "id": student_id}
