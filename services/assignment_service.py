@@ -1,5 +1,6 @@
 from database.db import get_db_connection, get_dict_cursor
 
+
 def create_assignment(student_id: int, subject_id: int, teacher_id: int, title: str, description: str, deadline: str, file_path: str = None):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
@@ -20,6 +21,31 @@ def create_assignment(student_id: int, subject_id: int, teacher_id: int, title: 
         "deadline": str(deadline),
         "file_path": file_path,
     }
+
+
+def get_all_assignments():
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        "SELECT id, student_id, subject_id, teacher_id, title, description, deadline, file_path, created_at FROM assignment ORDER BY created_at DESC"
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {
+            "id": row["id"],
+            "student_id": row["student_id"],
+            "subject_id": row["subject_id"],
+            "teacher_id": row["teacher_id"],
+            "title": row["title"],
+            "description": row["description"],
+            "deadline": str(row["deadline"]),
+            "file_path": row.get("file_path"),
+            "created_at": str(row["created_at"]),
+        }
+        for row in rows
+    ]
+
 
 def get_assignments_by_student(student_id: int):
     conn = get_db_connection()
@@ -44,6 +70,8 @@ def get_assignments_by_student(student_id: int):
         }
         for row in rows
     ]
+
+
 def update_assignment(assignment_id: int, title: str, description: str, deadline: str, file_path: str = None):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
@@ -65,6 +93,8 @@ def update_assignment(assignment_id: int, title: str, description: str, deadline
         "deadline": str(deadline),
         "file_path": file_path,
     }
+
+
 def delete_assignment(assignment_id: int):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)

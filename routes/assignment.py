@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from models.schemas import assignmentcreate
 from services.assignment_service import (
     create_assignment,
+    get_all_assignments,
     get_assignments_by_student,
     update_assignment,
     delete_assignment,
@@ -26,6 +27,13 @@ def add_assignment(
         getattr(assignment_data, "file_path", None),
     )
     return result
+
+
+@router.get("/")
+def get_all(
+    current_user: dict = Depends(get_current_user),
+):
+    return get_all_assignments()
 
 
 @router.get("/student/{student_id}")
