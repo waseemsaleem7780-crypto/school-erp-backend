@@ -11,12 +11,7 @@ def create_subject(name: str, code: str, class_id: int):
     new_id = cursor.fetchone()["id"]
     conn.commit()
     conn.close()
-    return {
-        "id": new_id,
-        "name": name,
-        "code": code,
-        "class_id": class_id
-    }
+    return {"id": new_id, "name": name, "code": code, "class_id": class_id}
 
 
 def get_all_subjects():
@@ -26,13 +21,8 @@ def get_all_subjects():
     rows = cursor.fetchall()
     conn.close()
     return [
-        {
-            "id": row["id"],
-            "name": row["name"],
-            "code": row["code"],
-            "class_id": row["class_id"]
-        }
-        for row in rows
+        {"id": r["id"], "name": r["name"], "code": r["code"], "class_id": r["class_id"]}
+        for r in rows
     ]
 
 
@@ -46,13 +36,8 @@ def get_subjects_by_class(class_id: int):
     rows = cursor.fetchall()
     conn.close()
     return [
-        {
-            "id": row["id"],
-            "name": row["name"],
-            "code": row["code"],
-            "class_id": row["class_id"]
-        }
-        for row in rows
+        {"id": r["id"], "name": r["name"], "code": r["code"], "class_id": r["class_id"]}
+        for r in rows
     ]
 
 
@@ -66,16 +51,9 @@ def update_subject(subject_id: int, name: str, code: str, class_id: int):
     result = cursor.fetchone()
     conn.commit()
     conn.close()
-
     if not result:
         return None
-
-    return {
-        "id": subject_id,
-        "name": name,
-        "code": code,
-        "class_id": class_id
-    }
+    return {"id": subject_id, "name": name, "code": code, "class_id": class_id}
 
 
 def delete_subject(subject_id: int):
@@ -85,8 +63,6 @@ def delete_subject(subject_id: int):
     result = cursor.fetchone()
     conn.commit()
     conn.close()
-
     if not result:
         return None
-
     return {"message": "Subject deleted", "id": subject_id}
