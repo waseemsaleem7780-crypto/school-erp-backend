@@ -86,8 +86,7 @@ app.include_router(teacher_dashboard_router, prefix="/api")
 app.include_router(student_dashboard_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
 app.include_router(attendance_router, prefix="/api")
-app.include_router(student_dashboard_router, prefix="/api")
-app.include_router(student_dashboard_router, prefix="/api")
+
 # -------------------- HOME ENDPOINT --------------------
 @app.get("/")
 def home():

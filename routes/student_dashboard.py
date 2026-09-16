@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from services.dashboard_service import (
+from services.student_dashboard_service import (   # ← service se import
     get_student_stats,
     get_student_attendance,
     get_student_results,
