@@ -1,98 +1,68 @@
 from database.db import get_db_connection, get_dict_cursor
 
 
-def mark_attendance(student_id: int, date: str, status: str, class_id: int = None, section_id: int = None):
-    """Ek student ki attendance mark karo (upsert)."""
-    conn = get_db_connection()
-    cursor = get_dict_cursor(conn)
-    
-    # Pehle check karo ke is date pe already marked hai ya nahi
-    cursor.execute(
-        "SELECT id FROM attendance WHERE student_id = %s AND date = %s",
-        (student_id, date)
-    )
-    existing = cursor.fetchone()
-    
-    if existing:
-        # Update
-        cursor.execute(
-            "UPDATE attendance SET status = %s WHERE id = %s RETURNING id",
-            (status, existing["id"])
-        )
-        record_id = cursor.fetchone()["id"]
-    else:
-        # Insert
-        cursor.execute(
-            """INSERT INTO attendance (student_id, date, status, class_id, section_id) 
-               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-            (student_id, date, status, class_id, section_id)
-        )
-        record_id = cursor.fetchone()["id"]
-    
-    conn.commit()
-    conn.close()
-    return {"id": record_id, "student_id": student_id, "date": date, "status": status}
-
-
-def bulk_mark_attendance(attendance_list: list):
+def bulk_mark_attendance(attendance_list: list, marked_by: int = None):
     """Multiple students ki attendance ek saath mark karo."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
-    
+
     results = []
     for item in attendance_list:
         student_id = item["student_id"]
         date = item["date"]
         status = item["status"]
-        class_id = item.get("class_id")
-        section_id = item.get("section_id")
-        
+
+        # Pehle check karo ke already marked hai ya nahi
         cursor.execute(
             "SELECT id FROM attendance WHERE student_id = %s AND date = %s",
             (student_id, date)
         )
         existing = cursor.fetchone()
-        
+
         if existing:
+            # Update
             cursor.execute(
-                "UPDATE attendance SET status = %s WHERE id = %s RETURNING id",
-                (status, existing["id"])
+                "UPDATE attendance SET status = %s, marked_by = %s WHERE id = %s RETURNING id",
+                (status, marked_by, existing["id"])
             )
         else:
+            # Insert
             cursor.execute(
-                """INSERT INTO attendance (student_id, date, status, class_id, section_id) 
-                   VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-                (student_id, date, status, class_id, section_id)
+                """INSERT INTO attendance (student_id, date, status, marked_by) 
+                   VALUES (%s, %s, %s, %s) RETURNING id""",
+                (student_id, date, status, marked_by)
             )
         results.append(cursor.fetchone()["id"])
-    
+
     conn.commit()
     conn.close()
     return {"message": f"{len(results)} attendance records saved", "count": len(results)}
 
 
 def get_attendance_by_date_and_class(date: str, class_id: int, section_id: int = None):
-    """Ek date aur class ke liye attendance dekho."""
+    """Ek date aur class ke liye attendance dekho (students table se join)."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
-    
+
     if section_id:
         cursor.execute(
-            """SELECT a.id, a.student_id, a.date, a.status, a.class_id, a.section_id
+            """SELECT a.id, a.student_id, a.date, a.status, a.marked_by
                FROM attendance a
-               WHERE a.date = %s AND a.class_id = %s AND a.section_id = %s
-               ORDER BY a.student_id""",
+               JOIN students s ON s.id = a.student_id
+               WHERE a.date = %s AND s.class_id = %s AND s.section_id = %s
+               ORDER BY s.roll_number""",
             (date, class_id, section_id)
         )
     else:
         cursor.execute(
-            """SELECT a.id, a.student_id, a.date, a.status, a.class_id, a.section_id
+            """SELECT a.id, a.student_id, a.date, a.status, a.marked_by
                FROM attendance a
-               WHERE a.date = %s AND a.class_id = %s
-               ORDER BY a.student_id""",
+               JOIN students s ON s.id = a.student_id
+               WHERE a.date = %s AND s.class_id = %s
+               ORDER BY s.roll_number""",
             (date, class_id)
         )
-    
+
     rows = cursor.fetchall()
     conn.close()
     return [
@@ -101,33 +71,7 @@ def get_attendance_by_date_and_class(date: str, class_id: int, section_id: int =
             "student_id": r["student_id"],
             "date": str(r["date"]),
             "status": r["status"],
-            "class_id": r["class_id"],
-            "section_id": r["section_id"],
-        }
-        for r in rows
-    ]
-
-
-def get_attendance_history(student_id: int, limit: int = 30):
-    """Ek student ki attendance history."""
-    conn = get_db_connection()
-    cursor = get_dict_cursor(conn)
-    cursor.execute(
-        """SELECT id, student_id, date, status 
-           FROM attendance 
-           WHERE student_id = %s 
-           ORDER BY date DESC 
-           LIMIT %s""",
-        (student_id, limit)
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    return [
-        {
-            "id": r["id"],
-            "student_id": r["student_id"],
-            "date": str(r["date"]),
-            "status": r["status"],
+            "marked_by": r["marked_by"],
         }
         for r in rows
     ]
@@ -148,12 +92,12 @@ def get_attendance_stats(date: str):
     )
     row = cursor.fetchone()
     conn.close()
-    
+
     total = row["total"] or 0
     present = row["present"] or 0
     absent = row["absent"] or 0
     percentage = round((present / total * 100), 2) if total > 0 else 0
-    
+
     return {
         "date": date,
         "total": total,
@@ -161,3 +105,20 @@ def get_attendance_stats(date: str):
         "absent": absent,
         "percentage": percentage
     }
+
+
+def get_attendance_history(student_id: int, limit: int = 30):
+    """Ek student ki attendance history."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        """SELECT id, student_id, date, status, marked_by
+           FROM attendance 
+           WHERE student_id = %s 
+           ORDER BY date DESC 
+           LIMIT %s""",
+        (student_id, limit)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
