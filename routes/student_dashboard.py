@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from services.student_dashboard_service import (
+from services.dashboard_service import (
     get_student_stats,
     get_student_attendance,
     get_student_results,
@@ -7,40 +7,32 @@ from services.student_dashboard_service import (
 )
 from utils.dependencies import get_current_user
 
-router = APIRouter(prefix="/student", tags=["Student Dashboard"])
+router = APIRouter(prefix="/student/dashboard", tags=["Student Dashboard"])
 
 
-@router.get("/my-stats")
+@router.get("/stats")
 def student_stats(current_user: dict = Depends(get_current_user)):
-    """Student ke dashboard stats"""
     if current_user["role"] != "student":
-        raise HTTPException(status_code=403, detail="Only students can access this")
-    
-    return get_student_stats(current_user["user_id"])
+        raise HTTPException(status_code=403, detail="Only students can access")
+    return get_student_stats(current_user["id"])
 
 
-@router.get("/my-attendance")
+@router.get("/attendance")
 def student_attendance(current_user: dict = Depends(get_current_user)):
-    """Student ki attendance"""
     if current_user["role"] != "student":
-        raise HTTPException(status_code=403, detail="Only students can access this")
-    
-    return get_student_attendance(current_user["user_id"])
+        raise HTTPException(status_code=403, detail="Only students can access")
+    return get_student_attendance(current_user["id"])
 
 
-@router.get("/my-results")
+@router.get("/results")
 def student_results(current_user: dict = Depends(get_current_user)):
-    """Student ke results"""
     if current_user["role"] != "student":
-        raise HTTPException(status_code=403, detail="Only students can access this")
-    
-    return get_student_results(current_user["user_id"])
+        raise HTTPException(status_code=403, detail="Only students can access")
+    return get_student_results(current_user["id"])
 
 
-@router.get("/my-fees")
+@router.get("/fees")
 def student_fees(current_user: dict = Depends(get_current_user)):
-    """Student ki fees"""
     if current_user["role"] != "student":
-        raise HTTPException(status_code=403, detail="Only students can access this")
-    
-    return get_student_fees(current_user["user_id"])
+        raise HTTPException(status_code=403, detail="Only students can access")
+    return get_student_fees(current_user["id"])
