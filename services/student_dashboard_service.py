@@ -15,8 +15,10 @@ def get_student_stats(user_id: int):
         cursor.execute("SELECT id FROM students WHERE user_id = %s", (user_id,))
         student = cursor.fetchone()
         if not student:
+            print(f"No student record found for user_id={user_id}")
             return result
         student_id = student["id"]
+        print(f"Student found: student_id={student_id} for user_id={user_id}")
 
         try:
             cursor.execute(
