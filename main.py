@@ -33,6 +33,7 @@ from routes.pdf import router as pdf_router
 from routes.backup import router as backup_router
 
 
+
 app = FastAPI(title="School ERP System", version="1.0")
 
 app.add_middleware(
