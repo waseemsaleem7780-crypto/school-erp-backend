@@ -1,77 +1,81 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from utils.dependencies import get_current_user
-import os
-import subprocess
-import shutil
+from database.db import get_db_connection, get_dict_cursor
 from datetime import datetime
 from io import BytesIO
 
 router = APIRouter(prefix="/backup", tags=["Backup"])
 
 
-def get_database_url():
-    """DATABASE_URL banao — env vars se."""
-    url = os.getenv("DATABASE_URL")
-    if url:
-        return url
-
-    host = os.getenv("DB_HOST", "localhost")
-    name = os.getenv("DB_NAME", "railway")
-    user = os.getenv("DB_USER", "postgres")
-    password = os.getenv("DB_PASSWORD", "")
-    port = os.getenv("DB_PORT", "5432")
-
-    if not password:
-        return None
-
-    return f"postgresql://{user}:{password}@{host}:{port}/{name}"
-
-
 @router.get("/database")
 def download_database_backup(current_user: dict = Depends(get_current_user)):
+    """Database ka backup download karo (pure Python — pg_dump ki zaroorat nahi)."""
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Only admin can download backup")
 
-    database_url = get_database_url()
-    if not database_url:
-        raise HTTPException(status_code=500, detail="Database config missing")
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
 
-    print(f"Database URL: {database_url[:30]}...")
+    cursor.execute("""
+        SELECT table_name FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        ORDER BY table_name
+    """)
+    tables = [row["table_name"] for row in cursor.fetchall()]
 
-    pg_dump_path = shutil.which("pg_dump")
-    if not pg_dump_path:
-        for path in ["/usr/bin/pg_dump", "/usr/local/bin/pg_dump"]:
-            if os.path.exists(path):
-                pg_dump_path = path
-                break
+    sql_lines = [
+        "-- School ERP Database Backup",
+        f"-- Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"-- Total Tables: {len(tables)}",
+        "",
+        "SET statement_timeout = 0;",
+        "SET client_encoding = 'UTF8';",
+        "",
+    ]
 
-    if not pg_dump_path:
-        raise HTTPException(status_code=500, detail="pg_dump not found")
+    for table in tables:
+        sql_lines.append(f"\n-- ============================================")
+        sql_lines.append(f"-- Table: {table}")
+        sql_lines.append(f"-- ============================================\n")
+        sql_lines.append(f'DROP TABLE IF EXISTS "{table}" CASCADE;')
 
-    print(f"pg_dump path: {pg_dump_path}")
+        cursor.execute(f'SELECT * FROM "{table}"')
+        rows = cursor.fetchall()
 
-    try:
-        result = subprocess.run(
-            [pg_dump_path, database_url, "--no-owner", "--no-acl"],
-            capture_output=True,
-            check=True,
-            timeout=120,
-        )
+        if not rows:
+            sql_lines.append(f"-- (empty table)\n")
+            continue
 
-        buffer = BytesIO(result.stdout)
-        buffer.seek(0)
-        filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql"
+        columns = list(rows[0].keys())
+        cols_str = ", ".join([f'"{c}"' for c in columns])
 
-        return StreamingResponse(
-            buffer,
-            media_type="application/sql",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.decode() if e.stderr else str(e)
-        print(f"pg_dump error: {error_msg}")
-        raise HTTPException(status_code=500, detail=f"Backup failed: {error_msg}")
-    except Exception as e:
-        print(f"backup error: {e}")
-        raise HTTPException(status_code=500, detail=f"Backup error: {str(e)}")
+        sql_lines.append(f"-- Rows: {len(rows)}\n")
+        for row in rows:
+            values = []
+            for v in row.values():
+                if v is None:
+                    values.append("NULL")
+                elif isinstance(v, str):
+                    values.append("'" + v.replace("'", "''") + "'")
+                elif isinstance(v, (int, float)):
+                    values.append(str(v))
+                elif isinstance(v, bool):
+                    values.append("TRUE" if v else "FALSE")
+                else:
+                    values.append("'" + str(v).replace("'", "''") + "'")
+            sql_lines.append(f'INSERT INTO "{table}" ({cols_str}) VALUES ({", ".join(values)});')
+        sql_lines.append("")
+
+    conn.close()
+
+    sql_content = "\n".join(sql_lines)
+    buffer = BytesIO(sql_content.encode('utf-8'))
+    buffer.seek(0)
+    filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql"
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/sql",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
