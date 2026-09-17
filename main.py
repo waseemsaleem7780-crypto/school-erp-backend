@@ -29,6 +29,8 @@ from routes.upload import router as upload_router
 from routes.teacher_dashboard import router as teacher_dashboard_router
 from routes.analytics import router as analytics_router
 from routes.export import router as export_router
+from routes.pdf import router as pdf_router
+
 
 app = FastAPI(title="School ERP System", version="1.0")
 
@@ -70,6 +72,8 @@ app.include_router(upload_router, prefix="/api")
 app.include_router(teacher_dashboard_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
+app.include_router(pdf_router, prefix="/api")
+
 
 
 @app.get("/")
