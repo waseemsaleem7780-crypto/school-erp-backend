@@ -1,5 +1,6 @@
 from database.db import get_db_connection, get_dict_cursor
 
+
 def get_dashboard_stats():
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
@@ -16,7 +17,11 @@ def get_dashboard_stats():
     cursor.execute("SELECT COUNT(*) as count FROM teachers")
     teachers = cursor.fetchone()["count"]
 
-    # Today's Attendance
+    # Total Subjects
+    cursor.execute("SELECT COUNT(*) as count FROM subjects")
+    subjects = cursor.fetchone()["count"]
+
+    # Today's Attendance Total
     cursor.execute(
         "SELECT COUNT(*) as count FROM attendance WHERE date = CURRENT_DATE"
     )
@@ -28,15 +33,17 @@ def get_dashboard_stats():
     )
     present_today = cursor.fetchone()["count"]
 
-    # Today's Absent
+    # Today's Half Day
     cursor.execute(
-        "SELECT COUNT(*) as count FROM attendance WHERE date = CURRENT_DATE AND status = 'absent'"
+        "SELECT COUNT(*) as count FROM attendance WHERE date = CURRENT_DATE AND status = 'half_day'"
     )
-    absent_today = cursor.fetchone()["count"]
+    half_day_today = cursor.fetchone()["count"]
 
-    # Total Subjects
-    cursor.execute("SELECT COUNT(*) as count FROM subjects")
-    subjects = cursor.fetchone()["count"]
+    # Today's Not Present
+    cursor.execute(
+        "SELECT COUNT(*) as count FROM attendance WHERE date = CURRENT_DATE AND status != 'present'"
+    )
+    not_present_today = cursor.fetchone()["count"]
 
     conn.close()
 
@@ -47,5 +54,6 @@ def get_dashboard_stats():
         "subjects": subjects,
         "today_attendance": today_attendance,
         "present_today": present_today,
-        "absent_today": absent_today,
+        "half_day_today": half_day_today,
+        "absent_today": not_present_today,
     }
