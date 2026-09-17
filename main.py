@@ -26,6 +26,7 @@ from routes.dashboard import router as dashboard_router
 from routes.teacher_dashboard import router as teacher_dashboard_router
 from routes.student_dashboard import router as student_dashboard_router
 from routes.upload import router as upload_router
+from routes.teacher_dashboard import router as teacher_dashboard_router
 
 app = FastAPI(title="School ERP System", version="1.0")
 
@@ -64,7 +65,7 @@ app.include_router(dashboard_router, prefix="/api")
 app.include_router(teacher_dashboard_router, prefix="/api")
 app.include_router(student_dashboard_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
-
+app.include_router(teacher_dashboard_router, prefix="/api")
 @app.get("/")
 def home():
     return {"message": "School ERP System is Running!", "total_modules": 20}
