@@ -48,7 +48,6 @@ def download_database_backup(current_user: dict = Depends(get_current_user)):
     # pg_dump ka full path dhoondo
     pg_dump_path = shutil.which("pg_dump")
     if not pg_dump_path:
-        # Common paths try karo
         for path in ["/usr/bin/pg_dump", "/usr/local/bin/pg_dump"]:
             if os.path.exists(path):
                 pg_dump_path = path
