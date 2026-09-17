@@ -12,12 +12,10 @@ router = APIRouter(prefix="/backup", tags=["Backup"])
 
 def get_database_url():
     """DATABASE_URL banao — env vars se."""
-    # Pehle DATABASE_URL try karo
     url = os.getenv("DATABASE_URL")
     if url:
         return url
 
-    # Fallback: DB_HOST, DB_NAME, etc. se banao
     host = os.getenv("DB_HOST", "localhost")
     name = os.getenv("DB_NAME", "railway")
     user = os.getenv("DB_USER", "postgres")
@@ -32,20 +30,15 @@ def get_database_url():
 
 @router.get("/database")
 def download_database_backup(current_user: dict = Depends(get_current_user)):
-    """Database ka SQL dump download karo."""
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Only admin can download backup")
 
     database_url = get_database_url()
     if not database_url:
-        raise HTTPException(
-            status_code=500,
-            detail="Database configuration missing. Need DATABASE_URL or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD."
-        )
+        raise HTTPException(status_code=500, detail="Database config missing")
 
     print(f"Database URL: {database_url[:30]}...")
 
-    # pg_dump ka full path dhoondo
     pg_dump_path = shutil.which("pg_dump")
     if not pg_dump_path:
         for path in ["/usr/bin/pg_dump", "/usr/local/bin/pg_dump"]:
@@ -54,7 +47,7 @@ def download_database_backup(current_user: dict = Depends(get_current_user)):
                 break
 
     if not pg_dump_path:
-        raise HTTPException(status_code=500, detail="pg_dump not found on server")
+        raise HTTPException(status_code=500, detail="pg_dump not found")
 
     print(f"pg_dump path: {pg_dump_path}")
 
