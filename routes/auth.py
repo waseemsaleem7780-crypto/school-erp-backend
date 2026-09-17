@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from models.schemas import usercreate, userlogin
 from services.auth_service import hash_password, verify_password, get_user_by_email, create_new_user
 from utils.jwt_handler import create_access_token
+from database.db import get_db_connection, get_dict_cursor
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -24,7 +25,20 @@ def login_user(login_data: userlogin):
     if not is_valid:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # ✅ school_id token mein add karo
+    # ✅ last_login + login_count update karo
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        """UPDATE users 
+           SET last_login = CURRENT_TIMESTAMP, 
+               login_count = COALESCE(login_count, 0) + 1 
+           WHERE id = %s""",
+        (user["id"],)
+    )
+    conn.commit()
+    conn.close()
+
+    # ✅ Token payload banao
     token_payload = {
         "user_id": user["id"],
         "role": user["role"],

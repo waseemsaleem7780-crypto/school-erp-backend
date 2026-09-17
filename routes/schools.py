@@ -40,6 +40,55 @@ def school_stats(current_user: dict = Depends(require_super_admin)):
     return get_school_stats()
 
 
+# ✅ Admin activity endpoint — super admin ke liye
+@router.get("/admin-activity")
+def admin_activity(current_user: dict = Depends(require_super_admin)):
+    """Kaunse admins active hain, kaunse nahi."""
+    from database.db import get_db_connection, get_dict_cursor
+
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute("""
+        SELECT 
+            u.id,
+            u.full_name,
+            u.email,
+            u.school_id,
+            s.name as school_name,
+            u.last_login,
+            u.login_count,
+            u.is_active,
+            CASE 
+                WHEN u.last_login IS NULL THEN 'never'
+                WHEN u.last_login > CURRENT_TIMESTAMP - INTERVAL '7 days' THEN 'active'
+                WHEN u.last_login > CURRENT_TIMESTAMP - INTERVAL '30 days' THEN 'inactive'
+                ELSE 'dormant'
+            END as status
+        FROM users u
+        LEFT JOIN schools s ON s.id = u.school_id
+        WHERE u.role = 'admin' AND u.deleted_at IS NULL
+        ORDER BY u.last_login DESC NULLS LAST
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [
+        {
+            "id": r["id"],
+            "full_name": r["full_name"],
+            "email": r["email"],
+            "school_id": r["school_id"],
+            "school_name": r["school_name"],
+            "last_login": str(r["last_login"]) if r["last_login"] else None,
+            "login_count": r["login_count"] or 0,
+            "is_active": r["is_active"],
+            "status": r["status"],
+        }
+        for r in rows
+    ]
+
+
+# ⚠️ Dynamic routes ALWAYS last mein rakho
 @router.get("/{school_id}")
 def get_school(
     school_id: int,
