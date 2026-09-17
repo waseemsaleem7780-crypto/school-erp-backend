@@ -1,43 +1,120 @@
-import psycopg2
-import psycopg2.extras
-import os
-
-# Railway DATABASE_URL check karo pehle
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-if DATABASE_URL:
-    # Railway (ya koi bhi cloud) — single URL se connect
-    DB_CONFIG = {
-        "dsn": DATABASE_URL,
-        "sslmode": "require"
-    }
-else:
-    # Local development
-    DB_CONFIG = {
-        "host": os.getenv("DB_HOST", "localhost"),
-        "database": os.getenv("DB_NAME", "school_db"),
-        "user": os.getenv("DB_USER", "school_admin"),
-        "password": os.getenv("DB_PASSWORD", "school123"),
-        "port": os.getenv("DB_PORT", "5432")
-    }
+from database.db import get_db_connection, get_dict_cursor
 
 
-def get_db_connection():
-    conn = psycopg2.connect(**DB_CONFIG)
-    return conn
-
-
-def get_dict_cursor(conn):
-    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-
-def init_db():
+def create_school(name: str, subdomain: str = None, admin_email: str = None, phone: str = None, address: str = None):
     conn = get_db_connection()
-    cursor = conn.cursor()
-    schema_path = os.path.join(os.path.dirname(__file__), 'schema_postgres.sql')
-    with open(schema_path, 'r') as f:
-        cursor.execute(f.read())
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        """INSERT INTO schools (name, subdomain, admin_email, phone, address) 
+           VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+        (name, subdomain, admin_email, phone, address)
+    )
+    new_id = cursor.fetchone()["id"]
     conn.commit()
-    cursor.close()
     conn.close()
-    print("✅ PostgreSQL Database initialized successfully!")
+    return {
+        "id": new_id,
+        "name": name,
+        "subdomain": subdomain,
+        "admin_email": admin_email,
+        "phone": phone,
+        "address": address
+    }
+
+
+def get_all_schools():
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        """SELECT id, name, subdomain, admin_email, phone, address, 
+                  subscription_plan, subscription_expires_at, is_active, created_at 
+           FROM schools 
+           WHERE deleted_at IS NULL 
+           ORDER BY id"""
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_school_by_id(school_id: int):
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        """SELECT id, name, subdomain, admin_email, phone, address, 
+                  subscription_plan, subscription_expires_at, is_active, created_at 
+           FROM schools 
+           WHERE id = %s AND deleted_at IS NULL""",
+        (school_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_school(school_id: int, name: str, subdomain: str = None, admin_email: str = None, phone: str = None, address: str = None):
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        """UPDATE schools 
+           SET name = %s, subdomain = %s, admin_email = %s, phone = %s, address = %s 
+           WHERE id = %s AND deleted_at IS NULL 
+           RETURNING id""",
+        (name, subdomain, admin_email, phone, address, school_id)
+    )
+    result = cursor.fetchone()
+    conn.commit()
+    conn.close()
+    if not result:
+        return None
+    return {
+        "id": school_id,
+        "name": name,
+        "subdomain": subdomain,
+        "admin_email": admin_email,
+        "phone": phone,
+        "address": address
+    }
+
+
+def delete_school(school_id: int):
+    """Soft delete."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        """UPDATE schools 
+           SET deleted_at = CURRENT_TIMESTAMP 
+           WHERE id = %s AND deleted_at IS NULL 
+           RETURNING id""",
+        (school_id,)
+    )
+    result = cursor.fetchone()
+    conn.commit()
+    conn.close()
+    if not result:
+        return None
+    return {"message": "School deleted (soft)", "id": school_id}
+
+
+def get_school_stats():
+    """Super admin ke liye overall stats."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute("SELECT COUNT(*) as count FROM schools WHERE deleted_at IS NULL")
+    total_schools = cursor.fetchone()["count"]
+
+    cursor.execute(
+        """SELECT COUNT(*) as count FROM users 
+           WHERE role = 'admin' AND deleted_at IS NULL"""
+    )
+    total_admins = cursor.fetchone()["count"]
+
+    cursor.execute("SELECT COUNT(*) as count FROM students WHERE deleted_at IS NULL")
+    total_students = cursor.fetchone()["count"]
+
+    conn.close()
+    return {
+        "total_schools": total_schools,
+        "total_admins": total_admins,
+        "total_students": total_students
+    }
