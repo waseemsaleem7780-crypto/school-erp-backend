@@ -5,6 +5,7 @@ from utils.jwt_handler import create_access_token
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+
 @router.post("/register", status_code=201)
 def register_user(user_data: usercreate):
     result = create_new_user(user_data)
@@ -12,15 +13,26 @@ def register_user(user_data: usercreate):
         raise HTTPException(status_code=400, detail=result["error"])
     return result
 
+
 @router.post("/login")
 def login_user(login_data: userlogin):
     user = get_user_by_email(login_data.email)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    is_valid = verify_password(login_data.password, user["password"])  # ✅ password (not password_hash)
+
+    is_valid = verify_password(login_data.password, user["password"])
     if not is_valid:
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    token = create_access_token({"user_id": user["id"], "role": user["role"]})
+
+    # ✅ school_id token mein add karo
+    token_payload = {
+        "user_id": user["id"],
+        "role": user["role"],
+    }
+
+    # Agar user ke paas school_id hai, to add karo
+    if user.get("school_id"):
+        token_payload["school_id"] = user["school_id"]
+
+    token = create_access_token(token_payload)
     return {"access_token": token, "token_type": "bearer"}

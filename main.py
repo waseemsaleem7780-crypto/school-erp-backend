@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from database.db import init_db
 
 from routes.auth import router as auth_router
+from routes.schools import router as schools_router  # NEW
 from routes.classes import router as classes_router
 from routes.sections import router as sections_router
 from routes.subjects import router as subjects_router
@@ -26,13 +27,10 @@ from routes.dashboard import router as dashboard_router
 from routes.teacher_dashboard import router as teacher_dashboard_router
 from routes.student_dashboard import router as student_dashboard_router
 from routes.upload import router as upload_router
-from routes.teacher_dashboard import router as teacher_dashboard_router
 from routes.analytics import router as analytics_router
 from routes.export import router as export_router
 from routes.pdf import router as pdf_router
 from routes.backup import router as backup_router
-
-
 
 app = FastAPI(title="School ERP System", version="1.0")
 
@@ -47,7 +45,9 @@ app.add_middleware(
 
 init_db()
 
+# ============ ROUTERS ============
 app.include_router(auth_router, prefix="/api")
+app.include_router(schools_router, prefix="/api")  # NEW
 app.include_router(classes_router, prefix="/api")
 app.include_router(sections_router, prefix="/api")
 app.include_router(subjects_router, prefix="/api")
@@ -71,12 +71,10 @@ app.include_router(dashboard_router, prefix="/api")
 app.include_router(teacher_dashboard_router, prefix="/api")
 app.include_router(student_dashboard_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
-app.include_router(teacher_dashboard_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
 app.include_router(pdf_router, prefix="/api")
 app.include_router(backup_router, prefix="/api")
-
 
 
 @app.get("/")

@@ -8,6 +8,13 @@ EXPIRY_MINUTES = 1440   # 24 hours
 
 
 def create_access_token(data: dict):
+    """
+    Token banao.
+    data mein ye keys honi chahiye:
+    - user_id
+    - role
+    - school_id (agar admin/teacher/student hai)
+    """
     copy_data = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=EXPIRY_MINUTES)
     copy_data.update({"exp": expire})
