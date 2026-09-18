@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import Optional
 from models.schemas import schoolscreate
 from services.school_service import (
     create_school,
@@ -8,44 +10,137 @@ from services.school_service import (
     delete_school,
     get_school_stats,
 )
+from services.auth_service import hash_password
+from database.db import get_db_connection, get_dict_cursor
 from utils.dependencies import get_current_user, require_super_admin
 
 router = APIRouter(prefix="/schools", tags=["Schools"])
 
 
-@router.post("/", status_code=201)
-def add_school(
-    school_data: schoolscreate,
+# ============ SCHEMA ============
+class SchoolWithAdminCreate(BaseModel):
+    name: str
+    subdomain: str
+    admin_name: str
+    admin_email: str
+    admin_password: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    subscription_plan: Optional[str] = "trial"
+
+
+# ============ SCHOOL + ADMIN CREATE (NEW) ============
+@router.post("/with-admin", status_code=201)
+def add_school_with_admin(
+    data: SchoolWithAdminCreate,
     current_user: dict = Depends(require_super_admin)
 ):
-    """Sirf super admin naya school add kar sakta hai."""
-    return create_school(
-        school_data.name,
-        school_data.subdomain,
-        school_data.admin_email,
-        school_data.phone,
-        school_data.address
+    """School + Admin user ek saath create karo."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    try:
+        # 1. Check subdomain unique
+        cursor.execute(
+            "SELECT id FROM schools WHERE subdomain = %s",
+            (data.subdomain,)
+        )
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Subdomain already exists")
+
+        # 2. Check email unique
+        cursor.execute(
+            "SELECT id FROM users WHERE email = %s",
+            (data.admin_email,)
+        )
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Email already exists")
+
+        # 3. School banao
+        cursor.execute(
+            """INSERT INTO schools (name, subdomain, admin_email, phone, address, subscription_plan) 
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+            (data.name, data.subdomain, data.admin_email, data.phone, data.address, data.subscription_plan)
+        )
+        school_id = cursor.fetchone()["id"]
+
+        # 4. Admin user banao
+        hashed_password = hash_password(data.admin_password)
+        cursor.execute(
+            """INSERT INTO users (full_name, email, password, role, school_id) 
+               VALUES (%s, %s, %s, 'admin', %s) RETURNING id""",
+            (data.admin_name, data.admin_email, hashed_password, school_id)
+        )
+        user_id = cursor.fetchone()["id"]
+
+        conn.commit()
+
+        # 5. Login URL banao
+        base_url = "https://school-erp-frontend-azure.vercel.app"
+        login_url = f"{base_url}/{data.subdomain}/login"
+
+        return {
+            "school_id": school_id,
+            "user_id": user_id,
+            "name": data.name,
+            "subdomain": data.subdomain,
+            "login_url": login_url,
+            "admin_email": data.admin_email,
+            "admin_password": data.admin_password,
+            "message": f"School created! Login URL: {login_url}"
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+# ============ GET SCHOOL BY SUBDOMAIN (NEW) ============
+@router.get("/by-subdomain/{subdomain}")
+def get_school_by_subdomain(subdomain: str):
+    """Subdomain se school dhundo (login page ke liye)."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        """SELECT id, name, subdomain, is_active 
+           FROM schools 
+           WHERE subdomain = %s AND deleted_at IS NULL""",
+        (subdomain,)
     )
+    school = cursor.fetchone()
+    conn.close()
+
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+
+    if not school["is_active"]:
+        raise HTTPException(status_code=403, detail="School is inactive")
+
+    return dict(school)
 
 
+# ============ GET ALL SCHOOLS ============
 @router.get("/")
 def get_schools(current_user: dict = Depends(require_super_admin)):
     """Sirf super admin saare schools dekh sakta hai."""
     return get_all_schools()
 
 
+# ============ STATS ============
 @router.get("/stats")
 def school_stats(current_user: dict = Depends(require_super_admin)):
     """Overall stats — total schools, admins, students."""
     return get_school_stats()
 
 
-# ✅ Admin activity endpoint — super admin ke liye
+# ============ ADMIN ACTIVITY ============
 @router.get("/admin-activity")
 def admin_activity(current_user: dict = Depends(require_super_admin)):
     """Kaunse admins active hain, kaunse nahi."""
-    from database.db import get_db_connection, get_dict_cursor
-
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute("""
@@ -88,7 +183,7 @@ def admin_activity(current_user: dict = Depends(require_super_admin)):
     ]
 
 
-# ⚠️ Dynamic routes ALWAYS last mein rakho
+# ============ DYNAMIC ROUTES (ALWAYS LAST) ============
 @router.get("/{school_id}")
 def get_school(
     school_id: int,
