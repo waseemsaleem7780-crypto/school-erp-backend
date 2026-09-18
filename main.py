@@ -1,6 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from database.db import init_db
+
+# ✅ Security (Phase 1)
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from routes.auth import router as auth_router
 from routes.schools import router as schools_router  # NEW
@@ -33,9 +39,16 @@ from routes.pdf import router as pdf_router
 from routes.backup import router as backup_router
 from routes import attendance
 from routes import chatbot
+from routes import audit  # ✅ NEW
 
 app = FastAPI(title="School ERP System", version="1.0")
 
+# ✅ Rate Limiter setup
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ✅ CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,11 +58,22 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+# ✅ Security Headers
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 init_db()
 
 # ============ ROUTERS ============
 app.include_router(auth_router, prefix="/api")
-app.include_router(schools_router, prefix="/api")  # NEW
+app.include_router(schools_router, prefix="/api")
 app.include_router(classes_router, prefix="/api")
 app.include_router(sections_router, prefix="/api")
 app.include_router(subjects_router, prefix="/api")
@@ -79,6 +103,7 @@ app.include_router(pdf_router, prefix="/api")
 app.include_router(backup_router, prefix="/api")
 app.include_router(attendance.router, prefix="/api")
 app.include_router(chatbot.router, prefix="/api")
+app.include_router(audit.router, prefix="/api")  # ✅ NEW
 
 
 @app.get("/")

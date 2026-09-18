@@ -1,12 +1,24 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from datetime import datetime, timedelta
+
 from models.schemas import usercreate, userlogin
-from services.auth_service import hash_password, verify_password, get_user_by_email, create_new_user
+from services.auth_service import (
+    hash_password,
+    verify_password,
+    get_user_by_email,
+    create_new_user,
+)
+from services.audit_service import log_action
 from utils.jwt_handler import create_access_token
 from database.db import get_db_connection, get_dict_cursor
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+limiter = Limiter(key_func=get_remote_address)
 
 
+# ============ REGISTER ============
 @router.post("/register", status_code=201)
 def register_user(user_data: usercreate):
     result = create_new_user(user_data)
@@ -15,56 +27,170 @@ def register_user(user_data: usercreate):
     return result
 
 
+# ============ LOGIN (with Rate Limit + Lockout + Audit) ============
 @router.post("/login")
-def login_user(login_data: userlogin):
-    user = get_user_by_email(login_data.email)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    is_valid = verify_password(login_data.password, user["password"])
-    if not is_valid:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    # Update last login
+@limiter.limit("5/minute")
+def login_user(request: Request, login_data: userlogin):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
-    cursor.execute(
-        """UPDATE users 
-           SET last_login = CURRENT_TIMESTAMP, 
-               login_count = COALESCE(login_count, 0) + 1 
-           WHERE id = %s""",
-        (user["id"],)
-    )
-    conn.commit()
 
-    # ✅ School slug dhundo
-    school_slug = None
-    if user.get("school_id"):
+    try:
+        # 1. User dhundo
+        user = get_user_by_email(login_data.email)
+
+        if not user:
+            log_action(
+                user_id=None,
+                school_id=None,
+                action="LOGIN_FAILED",
+                details={"email": login_data.email, "reason": "user_not_found"},
+                ip=request.client.host,
+                user_agent=request.headers.get("user-agent"),
+            )
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        # 2. Account locked hai?
+        if user.get("locked_until") and user["locked_until"] > datetime.now():
+            remaining = int((user["locked_until"] - datetime.now()).total_seconds() // 60)
+            log_action(
+                user_id=user["id"],
+                school_id=user.get("school_id"),
+                action="LOGIN_BLOCKED",
+                details={"email": user["email"], "reason": "account_locked"},
+                ip=request.client.host,
+                user_agent=request.headers.get("user-agent"),
+            )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Account locked. Try again in {remaining} minutes.",
+            )
+
+        # 3. Password verify
+        is_valid = verify_password(login_data.password, user["password"])
+
+        if not is_valid:
+            new_attempts = (user.get("failed_attempts") or 0) + 1
+
+            if new_attempts >= 5:
+                lock_until = datetime.now() + timedelta(minutes=15)
+                cursor.execute(
+                    "UPDATE users SET failed_attempts = %s, locked_until = %s WHERE id = %s",
+                    (new_attempts, lock_until, user["id"]),
+                )
+                conn.commit()
+
+                log_action(
+                    user_id=user["id"],
+                    school_id=user.get("school_id"),
+                    action="ACCOUNT_LOCKED",
+                    details={"email": user["email"], "attempts": new_attempts},
+                    ip=request.client.host,
+                    user_agent=request.headers.get("user-agent"),
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail="Account locked for 15 minutes. Too many failed attempts.",
+                )
+            else:
+                cursor.execute(
+                    "UPDATE users SET failed_attempts = %s WHERE id = %s",
+                    (new_attempts, user["id"]),
+                )
+                conn.commit()
+
+                log_action(
+                    user_id=user["id"],
+                    school_id=user.get("school_id"),
+                    action="LOGIN_FAILED",
+                    details={"email": user["email"], "attempts": new_attempts},
+                    ip=request.client.host,
+                    user_agent=request.headers.get("user-agent"),
+                )
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Invalid password. {5 - new_attempts} attempts left.",
+                )
+
+        # 4. ✅ Sahi password — reset attempts + update login info
         cursor.execute(
-            "SELECT subdomain FROM schools WHERE id = %s",
-            (user["school_id"],)
+            """UPDATE users 
+               SET failed_attempts = 0, 
+                   locked_until = NULL, 
+                   last_login = CURRENT_TIMESTAMP, 
+                   login_count = COALESCE(login_count, 0) + 1 
+               WHERE id = %s""",
+            (user["id"],),
         )
-        school = cursor.fetchone()
-        if school:
-            school_slug = school["subdomain"]
-    conn.close()
+        conn.commit()
 
-    # Token payload
-    token_payload = {
-        "user_id": user["id"],
-        "role": user["role"],
-    }
-    if user.get("school_id"):
-        token_payload["school_id"] = user["school_id"]
-    if school_slug:
-        token_payload["school_slug"] = school_slug
+        # 5. School slug dhundo
+        school_slug = None
+        if user.get("school_id"):
+            cursor.execute(
+                "SELECT subdomain FROM schools WHERE id = %s",
+                (user["school_id"],),
+            )
+            school = cursor.fetchone()
+            if school:
+                school_slug = school["subdomain"]
 
-    token = create_access_token(token_payload)
+        # 6. Audit log — success
+        log_action(
+            user_id=user["id"],
+            school_id=user.get("school_id"),
+            action="LOGIN_SUCCESS",
+            details={"email": user["email"], "role": user["role"]},
+            ip=request.client.host,
+            user_agent=request.headers.get("user-agent"),
+        )
 
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "role": user["role"],
-        "school_slug": school_slug,
-        "user_name": user.get("full_name"),
-    }
+        # 7. Token payload
+        token_payload = {
+            "user_id": user["id"],
+            "role": user["role"],
+        }
+        if user.get("school_id"):
+            token_payload["school_id"] = user["school_id"]
+        if school_slug:
+            token_payload["school_slug"] = school_slug
+
+        token = create_access_token(token_payload)
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "role": user["role"],
+            "school_slug": school_slug,
+            "user_name": user.get("full_name"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+# ============ UNLOCK ACCOUNT (Super Admin) ============
+@router.post("/unlock/{user_id}")
+def unlock_account(user_id: int):
+    """Super admin kisi bhi user ka account unlock kar sakta hai."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    try:
+        cursor.execute(
+            "UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = %s RETURNING id",
+            (user_id,),
+        )
+        result = cursor.fetchone()
+        conn.commit()
+
+        if not result:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return {"message": "Account unlocked", "user_id": user_id}
+    finally:
+        conn.close()
