@@ -21,13 +21,22 @@ def create_teacher(user_id: int, qualification: str, school_id: int):
 
 
 def get_all_teachers(school_id: int):
+    """Teachers with name + email + phone from users table."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        """SELECT id, user_id, qualification, hired_date 
-           FROM teachers 
-           WHERE school_id = %s AND deleted_at IS NULL 
-           ORDER BY id""",
+        """SELECT 
+            t.id, 
+            t.user_id, 
+            t.qualification, 
+            t.hired_date,
+            u.full_name as teacher_name,
+            u.email as teacher_email,
+            u.phone as teacher_phone
+           FROM teachers t
+           LEFT JOIN users u ON u.id = t.user_id
+           WHERE t.school_id = %s AND t.deleted_at IS NULL 
+           ORDER BY t.id""",
         (school_id,)
     )
     rows = cursor.fetchall()
@@ -37,7 +46,10 @@ def get_all_teachers(school_id: int):
             "id": row["id"],
             "user_id": row["user_id"],
             "qualification": row["qualification"],
-            "hired_date": str(row["hired_date"])
+            "hired_date": str(row["hired_date"]),
+            "teacher_name": row["teacher_name"] or f"Teacher #{row['id']}",
+            "teacher_email": row["teacher_email"] or "—",
+            "teacher_phone": row["teacher_phone"] or "—",
         }
         for row in rows
     ]
