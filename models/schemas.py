@@ -116,8 +116,10 @@ class subjectsresponse(BaseModel):
 class teacherscreate(BaseModel):
     user_id: int
     qualification: str
+    full_name: Optional[str] = None   # ✅ Naya
+    email: Optional[str] = None        # ✅ Naya
     phone: Optional[str] = None
-    password: Optional[str] = None  # ✅ Naya — Edit ke liye
+    password: Optional[str] = None
 
 
 class teachersresponse(BaseModel):
@@ -250,8 +252,10 @@ class students(BaseModel):
     class_id: int
     section_id: int
     roll_number: str
-    password: Optional[str] = None  # ✅ Naya — Edit ke liye
-
+    full_name: Optional[str] = None   # ✅ Naya
+    email: Optional[str] = None        # ✅ Naya
+    phone: Optional[str] = None        # ✅ Naya
+    password: Optional[str] = None
 
 class studentsresponse(BaseModel):
     id: int
