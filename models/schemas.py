@@ -15,6 +15,7 @@ class usercreate(BaseModel):
     password: str
     role: str
     school_id: Optional[int] = None
+    phone: Optional[str] = None  # ✅ Naya
 
     @validator('role')
     def validate_role(cls, v):
@@ -30,6 +31,7 @@ class userresponse(BaseModel):
     email: EmailStr
     role: str
     school_id: Optional[int] = None
+    phone: Optional[str] = None  # ✅ Naya
     created_at: date
 
     class Config:
@@ -114,12 +116,14 @@ class subjectsresponse(BaseModel):
 class teacherscreate(BaseModel):
     user_id: int
     qualification: str
+    phone: Optional[str] = None  # ✅ Naya
 
 
 class teachersresponse(BaseModel):
     id: int
     user_id: int
     qualification: str
+    phone: Optional[str] = None  # ✅ Naya
     hired_date: date
 
     class Config:
