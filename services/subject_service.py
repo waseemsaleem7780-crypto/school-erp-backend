@@ -26,10 +26,15 @@ def get_all_subjects(school_id: int):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        """SELECT id, name, code, class_id, teacher_id 
-           FROM subjects 
-           WHERE school_id = %s AND deleted_at IS NULL 
-           ORDER BY class_id, name""",
+        """SELECT 
+            s.id, s.name, s.code, s.class_id, s.teacher_id,
+            t.qualification as teacher_qualification,
+            u.full_name as teacher_name
+           FROM subjects s
+           LEFT JOIN teachers t ON t.id = s.teacher_id
+           LEFT JOIN users u ON u.id = t.user_id
+           WHERE s.school_id = %s AND s.deleted_at IS NULL 
+           ORDER BY s.class_id, s.name""",
         (school_id,)
     )
     rows = cursor.fetchall()
@@ -40,7 +45,9 @@ def get_all_subjects(school_id: int):
             "name": r["name"],
             "code": r["code"],
             "class_id": r["class_id"],
-            "teacher_id": r["teacher_id"]
+            "teacher_id": r["teacher_id"],
+            "teacher_name": r["teacher_name"],
+            "teacher_qualification": r["teacher_qualification"],
         }
         for r in rows
     ]
@@ -50,10 +57,15 @@ def get_subjects_by_class(class_id: int, school_id: int):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        """SELECT id, name, code, class_id, teacher_id 
-           FROM subjects 
-           WHERE class_id = %s AND school_id = %s AND deleted_at IS NULL 
-           ORDER BY name""",
+        """SELECT 
+            s.id, s.name, s.code, s.class_id, s.teacher_id,
+            t.qualification as teacher_qualification,
+            u.full_name as teacher_name
+           FROM subjects s
+           LEFT JOIN teachers t ON t.id = s.teacher_id
+           LEFT JOIN users u ON u.id = t.user_id
+           WHERE s.class_id = %s AND s.school_id = %s AND s.deleted_at IS NULL 
+           ORDER BY s.name""",
         (class_id, school_id)
     )
     rows = cursor.fetchall()
@@ -64,7 +76,9 @@ def get_subjects_by_class(class_id: int, school_id: int):
             "name": r["name"],
             "code": r["code"],
             "class_id": r["class_id"],
-            "teacher_id": r["teacher_id"]
+            "teacher_id": r["teacher_id"],
+            "teacher_name": r["teacher_name"],
+            "teacher_qualification": r["teacher_qualification"],
         }
         for r in rows
     ]
