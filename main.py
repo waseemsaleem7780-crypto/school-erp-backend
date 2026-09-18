@@ -32,6 +32,7 @@ from routes.export import router as export_router
 from routes.pdf import router as pdf_router
 from routes.backup import router as backup_router
 from routes import attendance
+from routes import chatbot
 
 app = FastAPI(title="School ERP System", version="1.0")
 
@@ -77,6 +78,7 @@ app.include_router(export_router, prefix="/api")
 app.include_router(pdf_router, prefix="/api")
 app.include_router(backup_router, prefix="/api")
 app.include_router(attendance.router, prefix="/api")
+app.include_router(chatbot.router, prefix="/api")
 
 
 @app.get("/")

@@ -123,49 +123,47 @@ def edit_teacher(
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
-    """Teacher edit — qualification, phone, aur password (optional) bhi update hoga."""
     if current_user.get("role") not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Only admin can edit")
 
-    # 1. Teacher record update karo (qualification)
     result = update_teacher(teacher_id, teacher_data.qualification, school_id)
-
     if not result:
         raise HTTPException(status_code=404, detail="Teacher not found")
 
-    # 2. User info update karo (phone, password)
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
-
-    # Teacher ka user_id dhundo
     cursor.execute("SELECT user_id FROM teachers WHERE id = %s", (teacher_id,))
     teacher_record = cursor.fetchone()
 
     if teacher_record:
         user_id = teacher_record["user_id"]
 
-        # Phone update (agar diya hai)
+        full_name = getattr(teacher_data, "full_name", None)
+        if full_name:
+            cursor.execute("UPDATE users SET full_name = %s WHERE id = %s", (full_name, user_id))
+
+        email = getattr(teacher_data, "email", None)
+        if email:
+            cursor.execute("SELECT id FROM users WHERE email = %s AND id != %s", (email, user_id))
+            if cursor.fetchone():
+                conn.close()
+                raise HTTPException(status_code=400, detail="Email already exists")
+            cursor.execute("UPDATE users SET email = %s WHERE id = %s", (email, user_id))
+
         phone = getattr(teacher_data, "phone", None)
         if phone:
-            cursor.execute(
-                "UPDATE users SET phone = %s WHERE id = %s",
-                (phone, user_id)
-            )
+            cursor.execute("UPDATE users SET phone = %s WHERE id = %s", (phone, user_id))
 
-        # ✅ Password update (agar diya hai — Optional)
         password = getattr(teacher_data, "password", None)
         if password and len(password) >= 8:
+            from services.auth_service import hash_password
             hashed = hash_password(password)
-            cursor.execute(
-                "UPDATE users SET password = %s WHERE id = %s",
-                (hashed, user_id)
-            )
+            cursor.execute("UPDATE users SET password = %s WHERE id = %s", (hashed, user_id))
 
     conn.commit()
     conn.close()
 
     return result
-
 
 @router.delete("/{teacher_id}")
 def remove_teacher(
