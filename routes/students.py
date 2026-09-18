@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import Optional
 from models.schemas import students
 from services.student_service import (
     create_student,
@@ -9,12 +11,82 @@ from services.student_service import (
     restore_student,
     get_deleted_students,
 )
+from services.auth_service import hash_password
 from database.db import get_db_connection, get_dict_cursor
 from utils.dependencies import get_current_user, get_current_school_id
 
 router = APIRouter(prefix="/students", tags=["Students"])
 
 
+# ============ SCHEMA ============
+class StudentWithUserCreate(BaseModel):
+    full_name: str
+    email: str
+    password: str
+    roll_number: str
+    class_id: int
+    section_id: int
+    phone: Optional[str] = None
+
+
+# ============ NAYA ENDPOINT: User + Student ek saath ============
+@router.post("/create-with-user", status_code=201)
+def create_student_with_user(
+    data: StudentWithUserCreate,
+    current_user: dict = Depends(get_current_user),
+    school_id: int = Depends(get_current_school_id)
+):
+    """Student + User ek saath banao (1 click)."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    try:
+        # 1. Check email unique
+        cursor.execute("SELECT id FROM users WHERE email = %s", (data.email,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Email already exists")
+
+        # 2. User banao (student role)
+        hashed_password = hash_password(data.password)
+        cursor.execute(
+            """INSERT INTO users (full_name, email, password, role, school_id, phone) 
+               VALUES (%s, %s, %s, 'student', %s, %s) RETURNING id""",
+            (data.full_name, data.email, hashed_password, school_id, data.phone)
+        )
+        user_id = cursor.fetchone()["id"]
+
+        # 3. Student record banao
+        cursor.execute(
+            """INSERT INTO students (user_id, roll_number, class_id, section_id, school_id) 
+               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+            (user_id, data.roll_number, data.class_id, data.section_id, school_id)
+        )
+        student_id = cursor.fetchone()["id"]
+
+        conn.commit()
+
+        return {
+            "id": student_id,
+            "user_id": user_id,
+            "full_name": data.full_name,
+            "email": data.email,
+            "roll_number": data.roll_number,
+            "class_id": data.class_id,
+            "section_id": data.section_id,
+            "phone": data.phone,
+            "message": f"Student {data.full_name} created successfully!"
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+# ============ Existing Endpoints (Same Rehte Hain) ============
 @router.post("/", status_code=201)
 def add_student(
     student_data: students,
@@ -44,20 +116,17 @@ def get_deleted(
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
-    """Soft-deleted students ki list."""
     if current_user.get("role") not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Only admin can view deleted")
     return get_deleted_students(school_id)
 
 
-# ⚠️ IMPORTANT: Ye routes /{class_id} se PEHLE hone chahiye
 @router.get("/class/{class_id}")
 def get_students_for_class(
     class_id: int,
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
-    """Ek class ke saare students (Attendance page ke liye)."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
@@ -79,7 +148,6 @@ def get_students_for_class_section(
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
-    """Ek class + section ke students (Attendance page ke liye)."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
@@ -94,7 +162,6 @@ def get_students_for_class_section(
     return [dict(r) for r in rows]
 
 
-# Ye /{class_id} route LAST mein rakho (warna conflict hoga)
 @router.get("/{class_id}")
 def get_students(
     class_id: int,
@@ -134,7 +201,6 @@ def remove_student(
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
-    """Soft delete — data safe rehta hai."""
     if current_user.get("role") not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Only admin can delete")
 
@@ -152,7 +218,6 @@ def restore_deleted_student(
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
-    """Soft-deleted student ko restore karo."""
     if current_user.get("role") not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Only admin can restore")
 
