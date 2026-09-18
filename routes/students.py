@@ -181,6 +181,7 @@ def edit_student(
     if current_user.get("role") not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Only admin can edit")
 
+    # 1. Student record update karo
     result = update_student(
         student_id,
         student_data.roll_number,
@@ -191,6 +192,23 @@ def edit_student(
 
     if not result:
         raise HTTPException(status_code=404, detail="Student not found")
+
+    # 2. Password update karo (agar diya hai)
+    password = getattr(student_data, "password", None)
+    if password and len(password) >= 8:
+        from services.auth_service import hash_password
+        conn = get_db_connection()
+        cursor = get_dict_cursor(conn)
+        cursor.execute("SELECT user_id FROM students WHERE id = %s", (student_id,))
+        student_record = cursor.fetchone()
+        if student_record:
+            hashed = hash_password(password)
+            cursor.execute(
+                "UPDATE users SET password = %s WHERE id = %s",
+                (hashed, student_record["user_id"])
+            )
+            conn.commit()
+        conn.close()
 
     return result
 
