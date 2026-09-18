@@ -25,7 +25,7 @@ def login_user(login_data: userlogin):
     if not is_valid:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # ✅ last_login + login_count update karo
+    # Update last login
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
@@ -36,17 +36,35 @@ def login_user(login_data: userlogin):
         (user["id"],)
     )
     conn.commit()
+
+    # ✅ School slug dhundo
+    school_slug = None
+    if user.get("school_id"):
+        cursor.execute(
+            "SELECT subdomain FROM schools WHERE id = %s",
+            (user["school_id"],)
+        )
+        school = cursor.fetchone()
+        if school:
+            school_slug = school["subdomain"]
     conn.close()
 
-    # ✅ Token payload banao
+    # Token payload
     token_payload = {
         "user_id": user["id"],
         "role": user["role"],
     }
-
-    # Agar user ke paas school_id hai, to add karo
     if user.get("school_id"):
         token_payload["school_id"] = user["school_id"]
+    if school_slug:
+        token_payload["school_slug"] = school_slug
 
     token = create_access_token(token_payload)
-    return {"access_token": token, "token_type": "bearer"}
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "role": user["role"],
+        "school_slug": school_slug,
+        "user_name": user.get("full_name"),
+    }
