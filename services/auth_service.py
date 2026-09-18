@@ -17,7 +17,9 @@ def get_user_by_email(email: str):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        """SELECT id, full_name, email, password, role, school_id 
+        """SELECT id, full_name, email, password, role, school_id, phone,
+                  failed_attempts, locked_until, last_login, login_count,
+                  is_active, deleted_at
            FROM users WHERE email = %s AND deleted_at IS NULL""",
         (email,)
     )
