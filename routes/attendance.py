@@ -22,12 +22,31 @@ class BulkAttendanceRequest(BaseModel):
     records: List[AttendanceItem]
 
 
+# ✅ Single attendance (frontend /api/attendance/ ke liye)
+class SingleAttendance(BaseModel):
+    student_id: int
+    date: str
+    status: str
+
+
+@router.post("/")
+def mark_single(
+    record: SingleAttendance,
+    current_user: dict = Depends(get_current_user),
+    school_id: int = Depends(get_current_school_id)
+):
+    """Single student ki attendance mark karo."""
+    marked_by = current_user.get("id") or current_user.get("user_id")
+    return bulk_mark_attendance([record.dict()], marked_by, school_id)
+
+
 @router.post("/bulk")
 def mark_bulk(
     request: BulkAttendanceRequest,
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
+    """Multiple students ki attendance ek saath mark karo."""
     records = [r.dict() for r in request.records]
     marked_by = current_user.get("id") or current_user.get("user_id")
     return bulk_mark_attendance(records, marked_by, school_id)
