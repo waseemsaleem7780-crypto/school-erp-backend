@@ -15,7 +15,7 @@ class usercreate(BaseModel):
     password: str
     role: str
     school_id: Optional[int] = None
-    phone: Optional[str] = None  # ✅ Naya
+    phone: Optional[str] = None
 
     @validator('role')
     def validate_role(cls, v):
@@ -31,7 +31,7 @@ class userresponse(BaseModel):
     email: EmailStr
     role: str
     school_id: Optional[int] = None
-    phone: Optional[str] = None  # ✅ Naya
+    phone: Optional[str] = None
     created_at: date
 
     class Config:
@@ -116,14 +116,15 @@ class subjectsresponse(BaseModel):
 class teacherscreate(BaseModel):
     user_id: int
     qualification: str
-    phone: Optional[str] = None  # ✅ Naya
+    phone: Optional[str] = None
+    password: Optional[str] = None  # ✅ Naya — Edit ke liye
 
 
 class teachersresponse(BaseModel):
     id: int
     user_id: int
     qualification: str
-    phone: Optional[str] = None  # ✅ Naya
+    phone: Optional[str] = None
     hired_date: date
 
     class Config:
@@ -249,6 +250,7 @@ class students(BaseModel):
     class_id: int
     section_id: int
     roll_number: str
+    password: Optional[str] = None  # ✅ Naya — Edit ke liye
 
 
 class studentsresponse(BaseModel):

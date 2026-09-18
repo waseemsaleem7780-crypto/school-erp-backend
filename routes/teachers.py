@@ -92,7 +92,7 @@ def add_teacher(
         teacher_data.qualification,
         school_id
     )
-    
+
     # Phone update
     phone = getattr(teacher_data, "phone", None)
     if phone:
@@ -104,7 +104,7 @@ def add_teacher(
         )
         conn.commit()
         conn.close()
-    
+
     return result
 
 
@@ -123,25 +123,47 @@ def edit_teacher(
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
+    """Teacher edit — qualification, phone, aur password (optional) bhi update hoga."""
     if current_user.get("role") not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Only admin can edit")
 
+    # 1. Teacher record update karo (qualification)
     result = update_teacher(teacher_id, teacher_data.qualification, school_id)
 
     if not result:
         raise HTTPException(status_code=404, detail="Teacher not found")
-    
-    phone = getattr(teacher_data, "phone", None)
-    if phone:
-        conn = get_db_connection()
-        cursor = get_dict_cursor(conn)
-        cursor.execute(
-            "UPDATE users SET phone = %s WHERE id = %s",
-            (phone, teacher_data.user_id)
-        )
-        conn.commit()
-        conn.close()
-    
+
+    # 2. User info update karo (phone, password)
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    # Teacher ka user_id dhundo
+    cursor.execute("SELECT user_id FROM teachers WHERE id = %s", (teacher_id,))
+    teacher_record = cursor.fetchone()
+
+    if teacher_record:
+        user_id = teacher_record["user_id"]
+
+        # Phone update (agar diya hai)
+        phone = getattr(teacher_data, "phone", None)
+        if phone:
+            cursor.execute(
+                "UPDATE users SET phone = %s WHERE id = %s",
+                (phone, user_id)
+            )
+
+        # ✅ Password update (agar diya hai — Optional)
+        password = getattr(teacher_data, "password", None)
+        if password and len(password) >= 8:
+            hashed = hash_password(password)
+            cursor.execute(
+                "UPDATE users SET password = %s WHERE id = %s",
+                (hashed, user_id)
+            )
+
+    conn.commit()
+    conn.close()
+
     return result
 
 
