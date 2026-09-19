@@ -45,14 +45,15 @@ def send_whatsapp(school_id: int, parent_phone: str, message: str) -> dict:
 
 
 def send_via_twilio(config: dict, parent_phone: str, message: str) -> dict:
-    """Twilio se bhejo — school ki keys se (fallback env se)."""
+    """Twilio se bhejo — hamesha Sandbox number FROM ke liye."""
     try:
         from twilio.rest import Client
         
-        # School ki keys use karo, warna env se
         sid = config.get("whatsapp_account_sid") or os.getenv("TWILIO_ACCOUNT_SID")
         token = config.get("whatsapp_auth_token") or os.getenv("TWILIO_AUTH_TOKEN")
-        from_number = config.get("whatsapp_number") or os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+        
+        # ✅ HAMESHA .env se Twilio ka Sandbox number use karo
+        from_number = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
         
         if not sid or not token:
             return {"success": False, "error": "Twilio credentials missing", "provider": "twilio"}
