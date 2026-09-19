@@ -8,6 +8,9 @@ def bulk_mark_attendance(records, marked_by, school_id):
 
     try:
         for r in records:
+            # ✅ Status lowercase karo + space/hyphen ko underscore
+            status = r["status"].lower().replace("-", "_").replace(" ", "_")
+            
             cursor.execute(
                 """
                 INSERT INTO attendance (student_id, date, status, marked_by, school_id)
@@ -16,7 +19,7 @@ def bulk_mark_attendance(records, marked_by, school_id):
                 DO UPDATE SET status = EXCLUDED.status, marked_by = EXCLUDED.marked_by
                 RETURNING id, student_id, date, status
                 """,
-                (r["student_id"], r["date"], r["status"], marked_by, school_id)
+                (r["student_id"], r["date"], status, marked_by, school_id)
             )
             row = cursor.fetchone()
             results.append(dict(row))
@@ -37,7 +40,7 @@ def get_attendance_by_date_and_class(date, class_id, school_id, section_id=None)
 
     query = """
         SELECT a.id, a.student_id, a.date, a.status,
-               s.roll_number, u.name AS student_name
+               s.roll_number, u.full_name AS student_name
         FROM attendance a
         JOIN students s ON s.id = a.student_id
         JOIN users u ON u.id = s.user_id
