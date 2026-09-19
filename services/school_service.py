@@ -67,31 +67,13 @@ def update_school(school_id: int, name: str, subdomain: str = None, admin_email:
 
 def delete_school(school_id: int):
     """
-    School delete karo + us school ka SAARA data soft-delete karo:
-    - School
-    - Users (admin, teacher, student, parent)
-    - Students
-    - Teachers
-    - Guardians
-    - Classes
-    - Sections
-    - Subjects
-    - Attendance
-    - Fees
-    - Homework
-    - Exams
-    - Results
-    - Assignments
-    - Notice Board
-    - Study Material
-    - Timetable
-    - Concessions
+    School delete karo + us school ka SAARA data soft-delete karo.
     """
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
     try:
-        # 1. Check school exist karta hai
+        # 1. Check school
         cursor.execute(
             "SELECT id FROM schools WHERE id = %s AND deleted_at IS NULL",
             (school_id,)
@@ -164,105 +146,7 @@ def delete_school(school_id: int):
         )
         deleted["subjects"] = cursor.rowcount
 
-        # 9. Attendance
-        cursor.execute(
-            """UPDATE attendance SET deleted_at = CURRENT_TIMESTAMP 
-               WHERE school_id = %s AND deleted_at IS NULL""",
-            (school_id,)
-        )
-        deleted["attendance"] = cursor.rowcount
-
-        # 10. Fees (payment + structure)
-        cursor.execute(
-            """UPDATE fee_payment SET deleted_at = CURRENT_TIMESTAMP 
-               WHERE student_id IN (
-                   SELECT id FROM students WHERE school_id = %s
-               ) AND deleted_at IS NULL""",
-            (school_id,)
-        )
-        deleted["fee_payments"] = cursor.rowcount
-
-        # 11. Homework (student ke through)
-        cursor.execute(
-            """UPDATE homework SET deleted_at = CURRENT_TIMESTAMP 
-               WHERE student_id IN (
-                   SELECT id FROM students WHERE school_id = %s
-               ) AND deleted_at IS NULL""",
-            (school_id,)
-        )
-        deleted["homework"] = cursor.rowcount
-
-        # 12. Exams (class ke through)
-        cursor.execute(
-            """UPDATE exam SET deleted_at = CURRENT_TIMESTAMP 
-               WHERE class_id IN (
-                   SELECT id FROM classes WHERE school_id = %s
-               ) AND deleted_at IS NULL""",
-            (school_id,)
-        )
-        deleted["exams"] = cursor.rowcount
-
-        # 13. Results (student ke through)
-        cursor.execute(
-            """UPDATE results SET deleted_at = CURRENT_TIMESTAMP 
-               WHERE student_id IN (
-                   SELECT id FROM students WHERE school_id = %s
-               ) AND deleted_at IS NULL""",
-            (school_id,)
-        )
-        deleted["results"] = cursor.rowcount
-
-        # 14. Assignments (student ke through)
-        cursor.execute(
-            """UPDATE assignment SET deleted_at = CURRENT_TIMESTAMP 
-               WHERE student_id IN (
-                   SELECT id FROM students WHERE school_id = %s
-               ) AND deleted_at IS NULL""",
-            (school_id,)
-        )
-        deleted["assignments"] = cursor.rowcount
-
-        # 15. Notice Board
-        cursor.execute(
-            """UPDATE notice_board SET deleted_at = CURRENT_TIMESTAMP 
-               WHERE class_id IN (
-                   SELECT id FROM classes WHERE school_id = %s
-               ) AND deleted_at IS NULL""",
-            (school_id,)
-        )
-        deleted["notice_board"] = cursor.rowcount
-
-        # 16. Study Material
-        cursor.execute(
-            """UPDATE study_material SET deleted_at = CURRENT_TIMESTAMP 
-               WHERE class_id IN (
-                   SELECT id FROM classes WHERE school_id = %s
-               ) AND deleted_at IS NULL""",
-            (school_id,)
-        )
-        deleted["study_material"] = cursor.rowcount
-
-        # 17. Timetable
-        cursor.execute(
-            """UPDATE timetable SET deleted_at = CURRENT_TIMESTAMP 
-               WHERE class_id IN (
-                   SELECT id FROM classes WHERE school_id = %s
-               ) AND deleted_at IS NULL""",
-            (school_id,)
-        )
-        deleted["timetable"] = cursor.rowcount
-
-        # 18. Concessions
-        cursor.execute(
-            """UPDATE concession SET deleted_at = CURRENT_TIMESTAMP 
-               WHERE student_id IN (
-                   SELECT id FROM students WHERE school_id = %s
-               ) AND deleted_at IS NULL""",
-            (school_id,)
-        )
-        deleted["concessions"] = cursor.rowcount
-
-        # 19. School khud
+        # 9. School khud
         cursor.execute(
             """UPDATE schools SET deleted_at = CURRENT_TIMESTAMP 
                WHERE id = %s AND deleted_at IS NULL""",
@@ -285,16 +169,31 @@ def delete_school(school_id: int):
 
 
 def get_school_stats():
+    """Super admin ke liye overall stats — sirf active schools ka data."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
+
+    # ✅ Sirf active schools
     cursor.execute("SELECT COUNT(*) as count FROM schools WHERE deleted_at IS NULL")
     total_schools = cursor.fetchone()["count"]
+
+    # ✅ Sirf active admins — jinke school active hain
     cursor.execute(
-        "SELECT COUNT(*) as count FROM users WHERE role = 'admin' AND deleted_at IS NULL"
+        """SELECT COUNT(*) as count FROM users u
+           WHERE u.role = 'admin' 
+             AND u.deleted_at IS NULL
+             AND u.school_id IN (SELECT id FROM schools WHERE deleted_at IS NULL)"""
     )
     total_admins = cursor.fetchone()["count"]
-    cursor.execute("SELECT COUNT(*) as count FROM students WHERE deleted_at IS NULL")
+
+    # ✅ Sirf active students — jinke school active hain
+    cursor.execute(
+        """SELECT COUNT(*) as count FROM students s
+           WHERE s.deleted_at IS NULL
+             AND s.school_id IN (SELECT id FROM schools WHERE deleted_at IS NULL)"""
+    )
     total_students = cursor.fetchone()["count"]
+
     conn.close()
     return {
         "total_schools": total_schools,
