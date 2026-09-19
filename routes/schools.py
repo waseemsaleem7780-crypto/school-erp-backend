@@ -27,6 +27,13 @@ class SchoolWithAdminCreate(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     subscription_plan: Optional[str] = "trial"
+    # ✅ WhatsApp Config (multi-provider)
+    whatsapp_provider: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    whatsapp_account_sid: Optional[str] = None
+    whatsapp_auth_token: Optional[str] = None
+    whatsapp_api_key: Optional[str] = None
+    whatsapp_phone_id: Optional[str] = None
 
 
 # ============ SCHOOL + ADMIN CREATE (NEW) ============
@@ -56,11 +63,20 @@ def add_school_with_admin(
         if cursor.fetchone():
             raise HTTPException(status_code=400, detail="Email already exists")
 
-        # 3. School banao
+        # 3. School banao (with WhatsApp config)
         cursor.execute(
-            """INSERT INTO schools (name, subdomain, admin_email, phone, address, subscription_plan) 
-               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
-            (data.name, data.subdomain, data.admin_email, data.phone, data.address, data.subscription_plan)
+            """INSERT INTO schools 
+               (name, subdomain, admin_email, phone, address, subscription_plan,
+                whatsapp_provider, whatsapp_number, whatsapp_account_sid,
+                whatsapp_auth_token, whatsapp_api_key, whatsapp_phone_id) 
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (
+                data.name, data.subdomain, data.admin_email, data.phone,
+                data.address, data.subscription_plan,
+                data.whatsapp_provider, data.whatsapp_number,
+                data.whatsapp_account_sid, data.whatsapp_auth_token,
+                data.whatsapp_api_key, data.whatsapp_phone_id
+            )
         )
         school_id = cursor.fetchone()["id"]
 
@@ -99,7 +115,7 @@ def add_school_with_admin(
         conn.close()
 
 
-# ============ GET SCHOOL BY SUBDOMAIN (NEW) ============
+# ============ GET SCHOOL BY SUBDOMAIN ============
 @router.get("/by-subdomain/{subdomain}")
 def get_school_by_subdomain(subdomain: str):
     """Subdomain se school dhundo (login page ke liye)."""
@@ -201,17 +217,45 @@ def edit_school(
     school_data: schoolscreate,
     current_user: dict = Depends(require_super_admin)
 ):
-    result = update_school(
-        school_id,
-        school_data.name,
-        school_data.subdomain,
-        school_data.admin_email,
-        school_data.phone,
-        school_data.address
-    )
-    if not result:
-        raise HTTPException(status_code=404, detail="School not found")
-    return result
+    """School edit karo — WhatsApp config bhi."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    try:
+        cursor.execute(
+            """UPDATE schools 
+               SET name = %s, subdomain = %s, admin_email = %s, phone = %s, address = %s,
+                   whatsapp_provider = COALESCE(%s, whatsapp_provider),
+                   whatsapp_number = COALESCE(%s, whatsapp_number),
+                   whatsapp_account_sid = COALESCE(%s, whatsapp_account_sid),
+                   whatsapp_auth_token = COALESCE(%s, whatsapp_auth_token),
+                   whatsapp_api_key = COALESCE(%s, whatsapp_api_key),
+                   whatsapp_phone_id = COALESCE(%s, whatsapp_phone_id)
+               WHERE id = %s AND deleted_at IS NULL RETURNING id""",
+            (
+                school_data.name, school_data.subdomain, school_data.admin_email,
+                school_data.phone, school_data.address,
+                school_data.whatsapp_provider, school_data.whatsapp_number,
+                school_data.whatsapp_account_sid, school_data.whatsapp_auth_token,
+                school_data.whatsapp_api_key, school_data.whatsapp_phone_id,
+                school_id
+            )
+        )
+        result = cursor.fetchone()
+        conn.commit()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="School not found")
+        
+        return {"id": school_id, "message": "School updated!"}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
 
 
 @router.delete("/{school_id}")

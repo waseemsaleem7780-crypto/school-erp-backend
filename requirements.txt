@@ -32,4 +32,6 @@ reportlab
 google-generativeai
 python-dotenv
 slowapi
-twilio 
+twilio
+requests
+python-dotenv

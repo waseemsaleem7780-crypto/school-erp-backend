@@ -47,22 +47,27 @@ class schoolscreate(BaseModel):
     address: Optional[str] = None
     subscription_plan: Optional[str] = "trial"
     subscription_expires_at: Optional[date] = None
+    # ✅ WhatsApp fields (optional — Twilio ke liye)
+    whatsapp_number: Optional[str] = None
+    whatsapp_api_key: Optional[str] = None
+    whatsapp_phone_id: Optional[str] = None
 
 
-class schoolsresponse(BaseModel):
-    id: int
+class schoolscreate(BaseModel):
     name: str
     subdomain: Optional[str] = None
     admin_email: Optional[EmailStr] = None
     phone: Optional[str] = None
     address: Optional[str] = None
-    subscription_plan: Optional[str] = None
+    subscription_plan: Optional[str] = "trial"
     subscription_expires_at: Optional[date] = None
-    is_active: bool
-    created_at: date
-
-    class Config:
-        from_attributes = True
+    # ✅ WhatsApp Config
+    whatsapp_provider: Optional[str] = None      # 'twilio' / 'wab2c' / 'meta'
+    whatsapp_number: Optional[str] = None
+    whatsapp_account_sid: Optional[str] = None   # Twilio
+    whatsapp_auth_token: Optional[str] = None    # Twilio
+    whatsapp_api_key: Optional[str] = None       # WAB2C / Meta
+    whatsapp_phone_id: Optional[str] = None      # Meta
 
 
 # ============ CLASSES ============
@@ -116,8 +121,8 @@ class subjectsresponse(BaseModel):
 class teacherscreate(BaseModel):
     user_id: int
     qualification: str
-    full_name: Optional[str] = None   # ✅ Naya
-    email: Optional[str] = None        # ✅ Naya
+    full_name: Optional[str] = None
+    email: Optional[str] = None
     phone: Optional[str] = None
     password: Optional[str] = None
 
@@ -252,12 +257,13 @@ class students(BaseModel):
     class_id: int
     section_id: int
     roll_number: str
-    full_name: Optional[str] = None   # ✅ Naya
-    email: Optional[str] = None        # ✅ Naya
-    phone: Optional[str] = None        # ✅ Naya
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
     password: Optional[str] = None
-    parent_whatsapp: Optional[str] = None   # ✅ NAYA
-    parent_name: Optional[str] = None 
+    parent_whatsapp: Optional[str] = None   # ✅ Parent WhatsApp
+    parent_name: Optional[str] = None       # ✅ Parent Name
+
 
 class studentsresponse(BaseModel):
     id: int
@@ -265,6 +271,8 @@ class studentsresponse(BaseModel):
     class_id: int
     section_id: int
     roll_number: str
+    parent_whatsapp: Optional[str] = None
+    parent_name: Optional[str] = None
 
     class Config:
         from_attributes = True
