@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException
-from services.notification_service import notify_absent
 from pydantic import BaseModel
 from typing import List, Optional
 from services.attendance_service import (
@@ -8,6 +7,7 @@ from services.attendance_service import (
     get_attendance_history,
     get_attendance_stats,
 )
+from services.notification_service import notify_absent
 from utils.dependencies import get_current_user, get_current_school_id
 
 router = APIRouter(prefix="/attendance", tags=["Attendance"])
@@ -40,7 +40,7 @@ def mark_single(
     marked_by = current_user.get("id") or current_user.get("user_id")
     result = bulk_mark_attendance([record.dict()], marked_by, school_id)
 
-    # ✅ WhatsApp notification agar absent
+    # ✅ WhatsApp notification — try/except mein wrap karo
     if record.status.lower() == "absent":
         try:
             notify_absent(
@@ -50,8 +50,36 @@ def mark_single(
             )
         except Exception as e:
             print(f"WhatsApp notification failed: {e}")
+            # Attendance already saved — error ignore karo
 
     return result
+
+
+@router.post("/bulk")
+def mark_bulk(
+    request: BulkAttendanceRequest,
+    current_user: dict = Depends(get_current_user),
+    school_id: int = Depends(get_current_school_id)
+):
+    """Multiple students ki attendance ek saath mark karo."""
+    records = [r.dict() for r in request.records]
+    marked_by = current_user.get("id") or current_user.get("user_id")
+    result = bulk_mark_attendance(records, marked_by, school_id)
+
+    # ✅ Absent students ko WhatsApp bhejo
+    for record in records:
+        if record["status"].lower() == "absent":
+            try:
+                notify_absent(
+                    school_id=school_id,
+                    student_id=record["student_id"],
+                    date=record["date"]
+                )
+            except Exception as e:
+                print(f"WhatsApp notification failed for {record['student_id']}: {e}")
+
+    return result
+
 
 @router.get("/date/{date}/class/{class_id}")
 def get_by_date_class(
