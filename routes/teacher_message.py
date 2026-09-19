@@ -19,10 +19,21 @@ def my_classes(
     school_id: int = Depends(get_current_school_id)
 ):
     """Teacher ki assigned classes."""
-    teacher_id = current_user.get("user_id") or current_user.get("id")
+    user_id = current_user.get("user_id") or current_user.get("id")
 
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
+
+    # ✅ Pehle teacher_id dhundo
+    cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
+    teacher = cursor.fetchone()
+
+    if not teacher:
+        conn.close()
+        return []
+
+    teacher_id = teacher["id"]
+
     cursor.execute(
         """SELECT 
                ta.id, ta.class_id, c.name as class_name,
@@ -50,10 +61,19 @@ def get_students(
     school_id: int = Depends(get_current_school_id)
 ):
     """Us class ke students — sirf agar teacher assigned hai."""
-    teacher_id = current_user.get("user_id") or current_user.get("id")
+    user_id = current_user.get("user_id") or current_user.get("id")
 
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
+
+    # ✅ Teacher ID dhundo
+    cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
+    teacher = cursor.fetchone()
+    if not teacher:
+        conn.close()
+        raise HTTPException(404, "Teacher not found")
+    teacher_id = teacher["id"]
+
     cursor.execute(
         """SELECT 1 FROM teacher_assignments 
            WHERE teacher_id = %s AND class_id = %s AND school_id = %s
@@ -64,7 +84,6 @@ def get_students(
         conn.close()
         raise HTTPException(403, "You are not assigned to this class")
 
-    # ✅ parent_whatsapp use karo (students table se)
     query = """
         SELECT s.id, s.roll_number, u.full_name as student_name,
                COALESCE(s.parent_whatsapp, g.whatsapp_number, g.phone_number) as parent_phone,
@@ -93,10 +112,18 @@ def send_teacher_message(
     school_id: int = Depends(get_current_school_id)
 ):
     """Teacher apne student ke parent ko WhatsApp bheje."""
-    teacher_id = current_user.get("user_id") or current_user.get("id")
+    user_id = current_user.get("user_id") or current_user.get("id")
 
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
+
+    # ✅ Teacher ID dhundo
+    cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
+    teacher = cursor.fetchone()
+    if not teacher:
+        conn.close()
+        raise HTTPException(404, "Teacher not found")
+    teacher_id = teacher["id"]
 
     # Verify teacher is allowed
     cursor.execute(
@@ -111,7 +138,7 @@ def send_teacher_message(
         conn.close()
         raise HTTPException(403, "Not allowed to message this student's parent")
 
-    # ✅ Parent phone — students table se
+    # Parent phone
     cursor.execute(
         """SELECT u.full_name as student_name, s.roll_number,
                   COALESCE(s.parent_whatsapp, g.whatsapp_number, g.phone_number) as parent_phone,
@@ -128,7 +155,7 @@ def send_teacher_message(
         conn.close()
         raise HTTPException(400, "Parent WhatsApp number not found")
 
-    # Send message
+    # Send
     result = send_whatsapp(school_id, info["parent_phone"], request.message)
 
     # Log
@@ -157,9 +184,19 @@ def message_history(
     limit: int = 50,
     current_user: dict = Depends(get_current_user)
 ):
-    teacher_id = current_user.get("user_id") or current_user.get("id")
+    user_id = current_user.get("user_id") or current_user.get("id")
+
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
+
+    # ✅ Teacher ID dhundo
+    cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
+    teacher = cursor.fetchone()
+    if not teacher:
+        conn.close()
+        return []
+    teacher_id = teacher["id"]
+
     cursor.execute(
         """SELECT tm.id, tm.message, tm.status, tm.sent_at,
                   u.full_name as student_name, s.roll_number
