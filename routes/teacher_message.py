@@ -84,13 +84,13 @@ def get_students(
         conn.close()
         raise HTTPException(403, "You are not assigned to this class")
 
+    # ✅ parent_whatsapp aur parent_name seedha students table se
     query = """
         SELECT s.id, s.roll_number, u.full_name as student_name,
-               COALESCE(s.parent_whatsapp, g.whatsapp_number, g.phone_number) as parent_phone,
-               COALESCE(s.parent_name, g.full_name) as parent_name
+               s.parent_whatsapp as parent_phone,
+               s.parent_name as parent_name
         FROM students s
         JOIN users u ON u.id = s.user_id
-        LEFT JOIN guardians g ON g.student_id = s.id
         WHERE s.class_id = %s AND s.school_id = %s
     """
     params = [class_id, school_id]
@@ -138,14 +138,13 @@ def send_teacher_message(
         conn.close()
         raise HTTPException(403, "Not allowed to message this student's parent")
 
-    # Parent phone
+    # ✅ Parent phone — seedha students table se
     cursor.execute(
         """SELECT u.full_name as student_name, s.roll_number,
-                  COALESCE(s.parent_whatsapp, g.whatsapp_number, g.phone_number) as parent_phone,
-                  COALESCE(s.parent_name, g.full_name) as parent_name
+                  s.parent_whatsapp as parent_phone,
+                  s.parent_name as parent_name
            FROM students s
            JOIN users u ON u.id = s.user_id
-           LEFT JOIN guardians g ON g.student_id = s.id
            WHERE s.id = %s AND s.school_id = %s LIMIT 1""",
         (request.student_id, school_id)
     )
