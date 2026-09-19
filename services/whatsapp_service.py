@@ -1,55 +1,43 @@
-import requests
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+from twilio.rest import Client
 from database.db import get_db_connection, get_dict_cursor
 
+TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
 
-def send_whatsapp(school_id: int, parent_phone: str, message: str) -> dict:
-    """School ke apne WhatsApp number se message bhejo."""
+
+def send_whatsapp_twilio(parent_phone: str, message: str) -> dict:
+    """Twilio se WhatsApp message bhejo."""
     try:
-        conn = get_db_connection()
-        cursor = get_dict_cursor(conn)
-        cursor.execute(
-            """SELECT name, whatsapp_number, whatsapp_api_key, whatsapp_phone_id 
-               FROM schools WHERE id = %s AND deleted_at IS NULL""",
-            (school_id,)
-        )
-        school = cursor.fetchone()
-        conn.close()
+        client = Client(TWILIO_SID, TWILIO_TOKEN)
 
-        if not school:
-            return {"success": False, "error": "School not found"}
-        if not school["whatsapp_api_key"] or not school["whatsapp_phone_id"]:
-            return {"success": False, "error": "WhatsApp not configured for this school"}
-
-        # Number format
         if not parent_phone.startswith("+"):
             parent_phone = "+" + parent_phone.lstrip("0")
 
-        url = f"https://graph.facebook.com/v18.0/{school['whatsapp_phone_id']}/messages"
-        headers = {
-            "Authorization": f"Bearer {school['whatsapp_api_key']}",
-            "Content-Type": "application/json"
+        msg = client.messages.create(
+            from_=TWILIO_FROM,
+            body=message,
+            to=f"whatsapp:{parent_phone}"
+        )
+
+        return {
+            "success": True,
+            "message_id": msg.sid,
+            "provider": "twilio"
         }
-        data = {
-            "messaging_product": "whatsapp",
-            "to": parent_phone,
-            "type": "text",
-            "text": {"body": message}
-        }
-
-        response = requests.post(url, headers=headers, json=data, timeout=10)
-
-        if response.status_code == 200:
-            result = response.json()
-            return {"success": True, "message_id": result.get("messages", [{}])[0].get("id")}
-        else:
-            return {"success": False, "error": response.json()}
-
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": str(e), "provider": "twilio"}
+
+
+def send_whatsapp(school_id: int, parent_phone: str, message: str) -> dict:
+    return send_whatsapp_twilio(parent_phone, message)
 
 
 def log_notification(school_id, student_id, parent_phone, event_type, message, status, msg_id=None, error=None):
-    """Notification log save karo."""
     try:
         conn = get_db_connection()
         cursor = get_dict_cursor(conn)
