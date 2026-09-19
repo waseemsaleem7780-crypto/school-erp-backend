@@ -27,6 +27,8 @@ class StudentWithUserCreate(BaseModel):
     class_id: int
     section_id: int
     phone: Optional[str] = None
+    parent_whatsapp: Optional[str] = None   # ✅ NAYA
+    parent_name: Optional[str] = None       # ✅ NAYA
 
 
 # ============ NAYA ENDPOINT: User + Student ek saath ============
@@ -55,11 +57,13 @@ def create_student_with_user(
         )
         user_id = cursor.fetchone()["id"]
 
-        # 3. Student record banao
+        # 3. Student record banao (parent fields ke saath)
         cursor.execute(
-            """INSERT INTO students (user_id, roll_number, class_id, section_id, school_id) 
-               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-            (user_id, data.roll_number, data.class_id, data.section_id, school_id)
+            """INSERT INTO students 
+               (user_id, roll_number, class_id, section_id, school_id, parent_whatsapp, parent_name) 
+               VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (user_id, data.roll_number, data.class_id, data.section_id, school_id,
+             data.parent_whatsapp, data.parent_name)
         )
         student_id = cursor.fetchone()["id"]
 
@@ -74,6 +78,8 @@ def create_student_with_user(
             "class_id": data.class_id,
             "section_id": data.section_id,
             "phone": data.phone,
+            "parent_whatsapp": data.parent_whatsapp,
+            "parent_name": data.parent_name,
             "message": f"Student {data.full_name} created successfully!"
         }
     except HTTPException:
@@ -86,7 +92,7 @@ def create_student_with_user(
         conn.close()
 
 
-# ============ Existing Endpoints (Same Rehte Hain) ============
+# ============ Existing Endpoints ============
 @router.post("/", status_code=201)
 def add_student(
     student_data: students,
@@ -130,7 +136,7 @@ def get_students_for_class(
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        """SELECT id, user_id, roll_number, class_id, section_id 
+        """SELECT id, user_id, roll_number, class_id, section_id, parent_whatsapp, parent_name 
            FROM students 
            WHERE class_id = %s AND school_id = %s AND deleted_at IS NULL 
            ORDER BY roll_number""",
@@ -151,7 +157,7 @@ def get_students_for_class_section(
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        """SELECT id, user_id, roll_number, class_id, section_id 
+        """SELECT id, user_id, roll_number, class_id, section_id, parent_whatsapp, parent_name 
            FROM students 
            WHERE class_id = %s AND section_id = %s AND school_id = %s AND deleted_at IS NULL 
            ORDER BY roll_number""",
@@ -181,7 +187,7 @@ def edit_student(
     if current_user.get("role") not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Only admin can edit")
 
-    # 1. Student record update karo (roll, class, section)
+    # 1. Student record update karo
     result = update_student(
         student_id,
         student_data.roll_number,
@@ -193,11 +199,10 @@ def edit_student(
     if not result:
         raise HTTPException(status_code=404, detail="Student not found")
 
-    # 2. User record update karo (name, email, phone, password)
+    # 2. User record update karo + parent fields
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
-    # Student ka user_id dhundo
     cursor.execute("SELECT user_id FROM students WHERE id = %s", (student_id,))
     student_record = cursor.fetchone()
 
@@ -207,43 +212,42 @@ def edit_student(
         # Full Name update
         full_name = getattr(student_data, "full_name", None)
         if full_name:
-            cursor.execute(
-                "UPDATE users SET full_name = %s WHERE id = %s",
-                (full_name, user_id)
-            )
+            cursor.execute("UPDATE users SET full_name = %s WHERE id = %s", (full_name, user_id))
 
-        # Email update (agar diya hai aur unique hai)
+        # Email update
         email = getattr(student_data, "email", None)
         if email:
-            cursor.execute(
-                "SELECT id FROM users WHERE email = %s AND id != %s",
-                (email, user_id)
-            )
+            cursor.execute("SELECT id FROM users WHERE email = %s AND id != %s", (email, user_id))
             if cursor.fetchone():
                 conn.close()
                 raise HTTPException(status_code=400, detail="Email already exists")
-            cursor.execute(
-                "UPDATE users SET email = %s WHERE id = %s",
-                (email, user_id)
-            )
+            cursor.execute("UPDATE users SET email = %s WHERE id = %s", (email, user_id))
 
         # Phone update
         phone = getattr(student_data, "phone", None)
         if phone:
-            cursor.execute(
-                "UPDATE users SET phone = %s WHERE id = %s",
-                (phone, user_id)
-            )
+            cursor.execute("UPDATE users SET phone = %s WHERE id = %s", (phone, user_id))
 
         # Password update
         password = getattr(student_data, "password", None)
         if password and len(password) >= 8:
-            from services.auth_service import hash_password
             hashed = hash_password(password)
-            cursor.execute(
-                "UPDATE users SET password = %s WHERE id = %s",
-                (hashed, user_id)
-            )
+            cursor.execute("UPDATE users SET password = %s WHERE id = %s", (hashed, user_id))
+
+    # ✅ Parent fields update
+    parent_whatsapp = getattr(student_data, "parent_whatsapp", None)
+    parent_name = getattr(student_data, "parent_name", None)
+
+    if parent_whatsapp is not None:
+        cursor.execute(
+            "UPDATE students SET parent_whatsapp = %s WHERE id = %s",
+            (parent_whatsapp, student_id)
+        )
+    if parent_name is not None:
+        cursor.execute(
+            "UPDATE students SET parent_name = %s WHERE id = %s",
+            (parent_name, student_id)
+        )
 
     conn.commit()
     conn.close()

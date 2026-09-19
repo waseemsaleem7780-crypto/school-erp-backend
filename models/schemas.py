@@ -256,6 +256,8 @@ class students(BaseModel):
     email: Optional[str] = None        # ✅ Naya
     phone: Optional[str] = None        # ✅ Naya
     password: Optional[str] = None
+    parent_whatsapp: Optional[str] = None   # ✅ NAYA
+    parent_name: Optional[str] = None 
 
 class studentsresponse(BaseModel):
     id: int
