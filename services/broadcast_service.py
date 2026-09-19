@@ -11,38 +11,39 @@ def send_broadcast(broadcast_id, school_id, message, target_type, target_id):
     cursor.execute("UPDATE broadcasts SET status = 'sending' WHERE id = %s", (broadcast_id,))
     conn.commit()
 
-    # Recipients dhundo
+    # ✅ Recipients dhundo — students.parent_whatsapp se
     if target_type == "all":
         cursor.execute(
-            """SELECT DISTINCT COALESCE(g.whatsapp_number, g.phone_number) as parent_phone, g.student_id
-               FROM guardians g
-               JOIN students s ON s.id = g.student_id
-               WHERE s.school_id = %s AND COALESCE(g.whatsapp_number, g.phone_number) IS NOT NULL""",
+            """SELECT DISTINCT s.parent_whatsapp as parent_phone, s.id as student_id
+               FROM students s
+               WHERE s.school_id = %s 
+                 AND s.parent_whatsapp IS NOT NULL 
+                 AND s.deleted_at IS NULL""",
             (school_id,)
         )
     elif target_type == "class":
         cursor.execute(
-            """SELECT DISTINCT COALESCE(g.whatsapp_number, g.phone_number) as parent_phone, g.student_id
-               FROM guardians g
-               JOIN students s ON s.id = g.student_id
+            """SELECT DISTINCT s.parent_whatsapp as parent_phone, s.id as student_id
+               FROM students s
                WHERE s.school_id = %s AND s.class_id = %s
-                 AND COALESCE(g.whatsapp_number, g.phone_number) IS NOT NULL""",
+                 AND s.parent_whatsapp IS NOT NULL 
+                 AND s.deleted_at IS NULL""",
             (school_id, target_id)
         )
     elif target_type == "section":
         cursor.execute(
-            """SELECT DISTINCT COALESCE(g.whatsapp_number, g.phone_number) as parent_phone, g.student_id
-               FROM guardians g
-               JOIN students s ON s.id = g.student_id
+            """SELECT DISTINCT s.parent_whatsapp as parent_phone, s.id as student_id
+               FROM students s
                WHERE s.school_id = %s AND s.section_id = %s
-                 AND COALESCE(g.whatsapp_number, g.phone_number) IS NOT NULL""",
+                 AND s.parent_whatsapp IS NOT NULL 
+                 AND s.deleted_at IS NULL""",
             (school_id, target_id)
         )
     else:
         cursor.execute(
-            """SELECT DISTINCT COALESCE(g.whatsapp_number, g.phone_number) as parent_phone, g.student_id
-               FROM guardians g
-               WHERE g.student_id = %s AND COALESCE(g.whatsapp_number, g.phone_number) IS NOT NULL""",
+            """SELECT DISTINCT s.parent_whatsapp as parent_phone, s.id as student_id
+               FROM students s
+               WHERE s.id = %s AND s.parent_whatsapp IS NOT NULL""",
             (target_id,)
         )
 
