@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from services.notification_service import notify_absent
 from pydantic import BaseModel
 from typing import List, Optional
 from services.attendance_service import (
@@ -37,20 +38,20 @@ def mark_single(
 ):
     """Single student ki attendance mark karo."""
     marked_by = current_user.get("id") or current_user.get("user_id")
-    return bulk_mark_attendance([record.dict()], marked_by, school_id)
+    result = bulk_mark_attendance([record.dict()], marked_by, school_id)
 
+    # ✅ WhatsApp notification agar absent
+    if record.status.lower() == "absent":
+        try:
+            notify_absent(
+                school_id=school_id,
+                student_id=record.student_id,
+                date=record.date
+            )
+        except Exception as e:
+            print(f"WhatsApp notification failed: {e}")
 
-@router.post("/bulk")
-def mark_bulk(
-    request: BulkAttendanceRequest,
-    current_user: dict = Depends(get_current_user),
-    school_id: int = Depends(get_current_school_id)
-):
-    """Multiple students ki attendance ek saath mark karo."""
-    records = [r.dict() for r in request.records]
-    marked_by = current_user.get("id") or current_user.get("user_id")
-    return bulk_mark_attendance(records, marked_by, school_id)
-
+    return result
 
 @router.get("/date/{date}/class/{class_id}")
 def get_by_date_class(

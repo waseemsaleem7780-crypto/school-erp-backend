@@ -40,6 +40,10 @@ from routes.backup import router as backup_router
 from routes import attendance
 from routes import chatbot
 from routes import audit  # ✅ NEW
+from routes import broadcast
+from routes import teacher_message
+from routes import whatsapp
+from routes import notification
 
 app = FastAPI(title="School ERP System", version="1.0")
 
@@ -104,7 +108,10 @@ app.include_router(backup_router, prefix="/api")
 app.include_router(attendance.router, prefix="/api")
 app.include_router(chatbot.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")  # ✅ NEW
-
+app.include_router(broadcast.router, prefix="/api")
+app.include_router(teacher_message.router, prefix="/api")
+app.include_router(whatsapp.router, prefix="/api")
+app.include_router(notification.router, prefix="/api")
 
 @app.get("/")
 def home():
