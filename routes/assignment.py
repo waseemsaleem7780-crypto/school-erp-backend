@@ -7,7 +7,7 @@ from services.assignment_service import (
     update_assignment,
     delete_assignment,
 )
-from utils.dependencies import get_current_user
+from utils.dependencies import get_current_user, get_current_school_id
 
 router = APIRouter(prefix="/assignment", tags=["Assignment"])
 
@@ -16,7 +16,9 @@ router = APIRouter(prefix="/assignment", tags=["Assignment"])
 def add_assignment(
     assignment_data: assignmentcreate,
     current_user: dict = Depends(get_current_user),
+    school_id: int = Depends(get_current_school_id)
 ):
+    """Assignment banao — sirf is school ke student ke liye."""
     result = create_assignment(
         assignment_data.student_id,
         assignment_data.subject_id,
@@ -25,6 +27,7 @@ def add_assignment(
         assignment_data.description,
         str(assignment_data.deadline),
         getattr(assignment_data, "file_path", None),
+        school_id
     )
     return result
 
@@ -32,16 +35,20 @@ def add_assignment(
 @router.get("/")
 def get_all(
     current_user: dict = Depends(get_current_user),
+    school_id: int = Depends(get_current_school_id)
 ):
-    return get_all_assignments()
+    """Sirf is school ki assignments."""
+    return get_all_assignments(school_id)
 
 
 @router.get("/student/{student_id}")
 def get_assignments(
     student_id: int,
     current_user: dict = Depends(get_current_user),
+    school_id: int = Depends(get_current_school_id)
 ):
-    return get_assignments_by_student(student_id)
+    """Ek student ki assignments — sirf is school ka."""
+    return get_assignments_by_student(student_id, school_id)
 
 
 @router.put("/{assignment_id}")
@@ -49,6 +56,7 @@ def edit_assignment(
     assignment_id: int,
     assignment_data: assignmentcreate,
     current_user: dict = Depends(get_current_user),
+    school_id: int = Depends(get_current_school_id)
 ):
     if current_user["role"] not in ["admin", "teacher"]:
         raise HTTPException(status_code=403, detail="Only teachers can edit")
@@ -59,6 +67,7 @@ def edit_assignment(
         assignment_data.description,
         str(assignment_data.deadline),
         getattr(assignment_data, "file_path", None),
+        school_id
     )
     
     if not result:
@@ -71,11 +80,12 @@ def edit_assignment(
 def remove_assignment(
     assignment_id: int,
     current_user: dict = Depends(get_current_user),
+    school_id: int = Depends(get_current_school_id)
 ):
     if current_user["role"] not in ["admin", "teacher"]:
         raise HTTPException(status_code=403, detail="Only teachers can delete")
     
-    result = delete_assignment(assignment_id)
+    result = delete_assignment(assignment_id, school_id)
     
     if not result:
         raise HTTPException(status_code=404, detail="Assignment not found")
