@@ -3,7 +3,7 @@ from services.whatsapp_service import send_whatsapp, log_notification
 
 
 def get_student_parent_info(student_id: int, school_id: int):
-    """Student aur parent ki info dhundo."""
+    """Student aur parent ki info dhundo — seedha students table se."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
@@ -12,13 +12,12 @@ def get_student_parent_info(student_id: int, school_id: int):
                s.roll_number,
                c.name as class_name,
                sec.name as section_name,
-               COALESCE(g.whatsapp_number, g.phone_number) as parent_phone,
-               g.full_name as parent_name,
+               s.parent_whatsapp as parent_phone,
+               s.parent_name as parent_name,
                sch.name as school_name
            FROM students s
            JOIN users u ON u.id = s.user_id
            JOIN schools sch ON sch.id = s.school_id
-           LEFT JOIN guardians g ON g.student_id = s.id
            LEFT JOIN classes c ON c.id = s.class_id
            LEFT JOIN sections sec ON sec.id = s.section_id
            WHERE s.id = %s AND s.school_id = %s LIMIT 1""",
@@ -47,7 +46,11 @@ Shukriya,
 
     result = send_whatsapp(school_id, info["parent_phone"], message)
     status = "sent" if result["success"] else "failed"
-    log_notification(school_id, student_id, info["parent_phone"], "ABSENT", message, status, result.get("message_id"), result.get("error"))
+    log_notification(
+        school_id, student_id, info["parent_phone"],
+        "ABSENT", message, status,
+        result.get("message_id"), result.get("error")
+    )
     return result
 
 
@@ -71,5 +74,9 @@ Shukriya,
 
     result = send_whatsapp(school_id, info["parent_phone"], message)
     status = "sent" if result["success"] else "failed"
-    log_notification(school_id, student_id, info["parent_phone"], "HOMEWORK", message, status, result.get("message_id"), result.get("error"))
+    log_notification(
+        school_id, student_id, info["parent_phone"],
+        "HOMEWORK", message, status,
+        result.get("message_id"), result.get("error")
+    )
     return result
