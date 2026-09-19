@@ -31,6 +31,5 @@ openpyxl
 reportlab
 google-generativeai
 python-dotenv
-
-
 slowapi
+twilio 
