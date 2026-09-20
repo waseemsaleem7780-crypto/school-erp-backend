@@ -9,7 +9,10 @@ router = APIRouter(prefix="/teacher-message", tags=["Teacher Message"])
 
 
 class TeacherMessageRequest(BaseModel):
-    student_id: int
+    student_id: Optional[int] = None
+    class_id: Optional[int] = None
+    section_id: Optional[int] = None
+    send_to_all: bool = False
     message: str
 
 
@@ -59,7 +62,7 @@ def get_students(
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
-    """Us class ke students — sirf alive students, deleted nahi."""
+    """Us class ke alive students — deleted nahi."""
     user_id = current_user.get("user_id") or current_user.get("id")
 
     conn = get_db_connection()
@@ -72,7 +75,7 @@ def get_students(
         raise HTTPException(404, "Teacher not found")
     teacher_id = teacher["id"]
 
-    # Verify teacher assigned to this class
+    # Verify teacher assigned
     cursor.execute(
         """SELECT 1 FROM teacher_assignments 
            WHERE teacher_id = %s AND class_id = %s AND school_id = %s
@@ -83,7 +86,6 @@ def get_students(
         conn.close()
         raise HTTPException(403, "You are not assigned to this class")
 
-    # ✅ FIX: deleted_at IS NULL add kiya
     query = """
         SELECT s.id, s.roll_number, u.full_name as student_name,
                s.parent_whatsapp as parent_phone,
@@ -112,7 +114,10 @@ def send_teacher_message(
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
-    """Teacher apne student ke parent ko WhatsApp bheje."""
+    """Teacher apne student(s) ke parent(s) ko WhatsApp bheje.
+    - Single: student_id do
+    - Bulk: send_to_all=True + class_id (+ optional section_id) do
+    """
     user_id = current_user.get("user_id") or current_user.get("id")
 
     conn = get_db_connection()
@@ -125,7 +130,91 @@ def send_teacher_message(
         raise HTTPException(404, "Teacher not found")
     teacher_id = teacher["id"]
 
-    # Verify teacher is allowed
+    # ══════════════════════════════════════════
+    # CASE 1: BULK — poori class ke parents
+    # ══════════════════════════════════════════
+    if request.send_to_all:
+        if not request.class_id:
+            conn.close()
+            raise HTTPException(400, "class_id required for bulk send")
+
+        # Verify teacher assigned to this class
+        cursor.execute(
+            """SELECT 1 FROM teacher_assignments 
+               WHERE teacher_id = %s AND class_id = %s AND school_id = %s LIMIT 1""",
+            (teacher_id, request.class_id, school_id)
+        )
+        if not cursor.fetchone():
+            conn.close()
+            raise HTTPException(403, "Not assigned to this class")
+
+        query = """
+            SELECT s.id, u.full_name as student_name, s.roll_number,
+                   s.parent_whatsapp as parent_phone,
+                   s.parent_name as parent_name
+            FROM students s
+            JOIN users u ON u.id = s.user_id
+            WHERE s.class_id = %s 
+              AND s.school_id = %s
+              AND s.deleted_at IS NULL
+              AND s.parent_whatsapp IS NOT NULL
+              AND s.parent_whatsapp != ''
+        """
+        params = [request.class_id, school_id]
+        if request.section_id:
+            query += " AND s.section_id = %s"
+            params.append(request.section_id)
+
+        cursor.execute(query, tuple(params))
+        students = cursor.fetchall()
+
+        if not students:
+            conn.close()
+            raise HTTPException(400, "No students with parent WhatsApp found")
+
+        sent_count = 0
+        failed_count = 0
+        results = []
+
+        for st in students:
+            result = send_whatsapp(school_id, st["parent_phone"], request.message)
+            status = "sent" if result.get("success") else "failed"
+            if result.get("success"):
+                sent_count += 1
+            else:
+                failed_count += 1
+
+            cursor.execute(
+                """INSERT INTO teacher_messages 
+                   (teacher_id, student_id, parent_phone, message, school_id, status, whatsapp_message_id, error_message)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                (teacher_id, st["id"], st["parent_phone"], request.message,
+                 school_id, status, result.get("message_id"), result.get("error"))
+            )
+            results.append({
+                "student": st["student_name"],
+                "status": status,
+            })
+
+        conn.commit()
+        conn.close()
+
+        return {
+            "success": True,
+            "message": f"Message sent to {sent_count} parents ({failed_count} failed)",
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "total": len(students),
+            "results": results,
+        }
+
+    # ══════════════════════════════════════════
+    # CASE 2: SINGLE — ek student
+    # ══════════════════════════════════════════
+    if not request.student_id:
+        conn.close()
+        raise HTTPException(400, "student_id required")
+
     cursor.execute(
         """SELECT 1 FROM students st
            JOIN teacher_assignments ta ON ta.class_id = st.class_id
@@ -161,15 +250,15 @@ def send_teacher_message(
            (teacher_id, student_id, parent_phone, message, school_id, status, whatsapp_message_id, error_message)
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
         (teacher_id, request.student_id, info["parent_phone"], request.message,
-         school_id, "sent" if result["success"] else "failed",
+         school_id, "sent" if result.get("success") else "failed",
          result.get("message_id"), result.get("error"))
     )
     conn.commit()
     conn.close()
 
     return {
-        "success": result["success"],
-        "message": "Message sent" if result["success"] else "Failed",
+        "success": result.get("success"),
+        "message": "Message sent" if result.get("success") else "Failed",
         "parent_name": info["parent_name"],
         "parent_phone": info["parent_phone"],
         "student_name": info["student_name"]
