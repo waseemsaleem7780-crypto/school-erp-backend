@@ -16,6 +16,7 @@ def get_user_id(current_user: dict) -> int:
 
 @router.get("/my-stats")
 def teacher_stats(current_user: dict = Depends(get_current_user)):
+    """Teacher ke stats — classes, students, subjects, today attendance."""
     if current_user.get("role") != "teacher":
         raise HTTPException(status_code=403, detail="Only teachers can access this")
     return get_teacher_stats(get_user_id(current_user))
@@ -23,6 +24,7 @@ def teacher_stats(current_user: dict = Depends(get_current_user)):
 
 @router.get("/my-classes")
 def teacher_classes(current_user: dict = Depends(get_current_user)):
+    """Teacher ke subjects aur classes ki list."""
     if current_user.get("role") != "teacher":
         raise HTTPException(status_code=403, detail="Only teachers can access this")
     return get_teacher_classes(get_user_id(current_user))
@@ -30,6 +32,7 @@ def teacher_classes(current_user: dict = Depends(get_current_user)):
 
 @router.get("/my-students/{class_id}")
 def teacher_students(class_id: int, current_user: dict = Depends(get_current_user)):
+    """Ek class ke students ki list."""
     if current_user.get("role") != "teacher":
         raise HTTPException(status_code=403, detail="Only teachers can access this")
     return get_teacher_students(class_id)

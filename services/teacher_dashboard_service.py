@@ -13,7 +13,10 @@ def get_teacher_stats(user_id: int):
     }
     try:
         # Teacher ka id nikaalo
-        cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
+        cursor.execute(
+            "SELECT id FROM teachers WHERE user_id = %s AND deleted_at IS NULL",
+            (user_id,)
+        )
         teacher = cursor.fetchone()
         if not teacher:
             print(f"No teacher record found for user_id={user_id}")
@@ -41,14 +44,15 @@ def get_teacher_stats(user_id: int):
         except Exception as e:
             print("classes error:", e)
 
-        # Students count (all students in teacher's classes)
+        # ✅ Students count — sirf alive students teacher ke classes mein
         try:
             cursor.execute(
                 """SELECT COUNT(DISTINCT s.id) as c 
                    FROM students s
                    WHERE s.class_id IN (
                        SELECT DISTINCT class_id FROM subjects WHERE teacher_id = %s
-                   )""",
+                   )
+                   AND s.deleted_at IS NULL""",
                 (teacher_id,)
             )
             result["students_count"] = cursor.fetchone()["c"]
@@ -79,7 +83,10 @@ def get_teacher_classes(user_id: int):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     try:
-        cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
+        cursor.execute(
+            "SELECT id FROM teachers WHERE user_id = %s AND deleted_at IS NULL",
+            (user_id,)
+        )
         teacher = cursor.fetchone()
         if not teacher:
             return []
@@ -130,6 +137,7 @@ def get_teacher_students(class_id: int):
                FROM students s
                LEFT JOIN users u ON u.id = s.user_id
                WHERE s.class_id = %s
+                 AND s.deleted_at IS NULL
                ORDER BY s.roll_number""",
             (class_id,)
         )
