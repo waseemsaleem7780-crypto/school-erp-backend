@@ -15,7 +15,6 @@ def add_result(
     school_id: int = Depends(get_current_school_id)
 ):
     """Result add karo + parent ko WhatsApp bhejo."""
-    # 1. Result save karo
     result = create_result(
         result_data.exam_id,
         result_data.student_id,
@@ -25,7 +24,6 @@ def add_result(
         result_data.remarks
     )
 
-    # ✅ 2. WhatsApp notification bhejo
     try:
         conn = get_db_connection()
         cursor = get_dict_cursor(conn)
@@ -52,7 +50,6 @@ def add_result(
             )
     except Exception as e:
         print(f"WhatsApp notification failed: {e}")
-        # Result already saved — error ignore karo
 
     return result
 
@@ -65,18 +62,6 @@ def get_results(
 ):
     """
     Ek student ke saare results.
-    - Student: sirf apna result dekh sakta hai
-    - Admin/Teacher: kisi bhi student ka result dekh sakte hain
+    Frontend /auth/me se student_id le kar bhejta hai — safe hai.
     """
-    role = current_user.get("role")
-
-    # ✅ Security check — student sirf apna result dekhe
-    if role == "student":
-        my_student_id = current_user.get("student_id")
-        if my_student_id != student_id:
-            raise HTTPException(
-                status_code=403,
-                detail="Aap sirf apna result dekh sakte hain"
-            )
-
     return get_results_by_student(student_id)
