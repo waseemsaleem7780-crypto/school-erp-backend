@@ -80,3 +80,35 @@ Shukriya,
         result.get("message_id"), result.get("error")
     )
     return result
+
+
+# ✅ NAYA FUNCTION — Result Notification
+def notify_result(school_id: int, student_id: int, exam_name: str, 
+                  subject_name: str, marks: int, total: int, grade: str):
+    """Exam result aane par parent ko message."""
+    info = get_student_parent_info(student_id, school_id)
+    if not info or not info["parent_phone"]:
+        return {"success": False, "error": "Parent phone not found"}
+
+    percentage = round((marks / total) * 100, 2) if total > 0 else 0
+
+    message = f"""Assalam-o-Alaikum!
+
+*{info['student_name']}* (Roll #{info['roll_number']}) ka result aa gaya hai:
+
+📝 Exam: {exam_name}
+📚 Subject: {subject_name}
+📊 Marks: {marks}/{total} ({percentage}%)
+🏆 Grade: {grade}
+
+Shukriya,
+{info['school_name']}"""
+
+    result = send_whatsapp(school_id, info["parent_phone"], message)
+    status = "sent" if result["success"] else "failed"
+    log_notification(
+        school_id, student_id, info["parent_phone"],
+        "RESULT", message, status,
+        result.get("message_id"), result.get("error")
+    )
+    return result
