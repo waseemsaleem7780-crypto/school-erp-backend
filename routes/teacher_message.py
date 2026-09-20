@@ -24,11 +24,13 @@ def my_classes(
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
+    # ✅ deleted_at filter HATAO
     cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
     teacher = cursor.fetchone()
 
     if not teacher:
         conn.close()
+        print(f"[teacher-message] Teacher not found for user_id={user_id}")
         return []
 
     teacher_id = teacher["id"]
@@ -65,6 +67,7 @@ def get_students(
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
+    # ✅ deleted_at filter HATAO
     cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
     teacher = cursor.fetchone()
     if not teacher:
@@ -114,10 +117,12 @@ def send_teacher_message(
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
+    # ✅ deleted_at filter HATAO — yahi masla hai
     cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
     teacher = cursor.fetchone()
     if not teacher:
         conn.close()
+        print(f"[teacher-message/send] Teacher not found for user_id={user_id}")
         raise HTTPException(404, "Teacher not found")
     teacher_id = teacher["id"]
 
@@ -134,7 +139,7 @@ def send_teacher_message(
         conn.close()
         raise HTTPException(403, "Not allowed to message this student's parent")
 
-    # Parent phone — seedha students table se
+    # Parent phone
     cursor.execute(
         """SELECT u.full_name as student_name, s.roll_number,
                   s.parent_whatsapp as parent_phone,
@@ -152,7 +157,7 @@ def send_teacher_message(
 
     result = send_whatsapp(school_id, info["parent_phone"], request.message)
 
-    # Log
+    # Log (agar table exist kare)
     try:
         cursor.execute(
             """INSERT INTO teacher_messages 
@@ -164,8 +169,9 @@ def send_teacher_message(
         )
         conn.commit()
     except Exception as e:
-        print(f"teacher_messages log failed (table missing?): {e}")
+        print(f"teacher_messages log failed: {e}")
         conn.rollback()
+
     conn.close()
 
     return {
