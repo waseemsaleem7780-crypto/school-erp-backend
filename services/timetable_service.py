@@ -38,11 +38,11 @@ def get_timetable_by_class(class_id: int):
               t.start_time, 
               t.end_time,
               s.name AS subject_name,
-              COALESCE(tc.full_name, tch.qualification) AS teacher_name
+              COALESCE(u.full_name, tch.qualification) AS teacher_name
            FROM timetable t
            LEFT JOIN subjects s ON s.id = t.subject_id
            LEFT JOIN teachers tch ON tch.id = t.teacher_id
-           LEFT JOIN users tc ON tc.id = tch.user_id
+           LEFT JOIN users u ON u.id = tch.user_id
            WHERE t.class_id = %s 
            ORDER BY t.day_of_week, t.start_time""",
         (class_id,)
@@ -50,7 +50,6 @@ def get_timetable_by_class(class_id: int):
     rows = cursor.fetchall()
     conn.close()
     return [
- source /Users/macbookpro/Desktop/attendance/.venv/bin/activate
         {
             "id": row["id"],
             "class_id": row["class_id"],
@@ -65,6 +64,3 @@ def get_timetable_by_class(class_id: int):
         }
         for row in rows
     ]
-
-
-
