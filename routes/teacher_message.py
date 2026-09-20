@@ -24,8 +24,7 @@ def my_classes(
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
-    # ✅ Pehle teacher_id dhundo
-    cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT id FROM teachers WHERE user_id = %s AND deleted_at IS NULL", (user_id,))
     teacher = cursor.fetchone()
 
     if not teacher:
@@ -60,20 +59,20 @@ def get_students(
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
-    """Us class ke students — sirf agar teacher assigned hai."""
+    """Us class ke students — sirf alive students, deleted nahi."""
     user_id = current_user.get("user_id") or current_user.get("id")
 
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
-    # ✅ Teacher ID dhundo
-    cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT id FROM teachers WHERE user_id = %s AND deleted_at IS NULL", (user_id,))
     teacher = cursor.fetchone()
     if not teacher:
         conn.close()
         raise HTTPException(404, "Teacher not found")
     teacher_id = teacher["id"]
 
+    # Verify teacher assigned to this class
     cursor.execute(
         """SELECT 1 FROM teacher_assignments 
            WHERE teacher_id = %s AND class_id = %s AND school_id = %s
@@ -84,14 +83,16 @@ def get_students(
         conn.close()
         raise HTTPException(403, "You are not assigned to this class")
 
-    # ✅ parent_whatsapp aur parent_name seedha students table se
+    # ✅ FIX: deleted_at IS NULL add kiya
     query = """
         SELECT s.id, s.roll_number, u.full_name as student_name,
                s.parent_whatsapp as parent_phone,
                s.parent_name as parent_name
         FROM students s
         JOIN users u ON u.id = s.user_id
-        WHERE s.class_id = %s AND s.school_id = %s
+        WHERE s.class_id = %s 
+          AND s.school_id = %s
+          AND s.deleted_at IS NULL
     """
     params = [class_id, school_id]
     if section_id:
@@ -117,8 +118,7 @@ def send_teacher_message(
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
-    # ✅ Teacher ID dhundo
-    cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT id FROM teachers WHERE user_id = %s AND deleted_at IS NULL", (user_id,))
     teacher = cursor.fetchone()
     if not teacher:
         conn.close()
@@ -130,6 +130,7 @@ def send_teacher_message(
         """SELECT 1 FROM students st
            JOIN teacher_assignments ta ON ta.class_id = st.class_id
            WHERE st.id = %s AND ta.teacher_id = %s
+             AND st.deleted_at IS NULL
              AND (ta.section_id IS NULL OR ta.section_id = st.section_id)
            LIMIT 1""",
         (request.student_id, teacher_id)
@@ -138,14 +139,13 @@ def send_teacher_message(
         conn.close()
         raise HTTPException(403, "Not allowed to message this student's parent")
 
-    # ✅ Parent phone — seedha students table se
     cursor.execute(
         """SELECT u.full_name as student_name, s.roll_number,
                   s.parent_whatsapp as parent_phone,
                   s.parent_name as parent_name
            FROM students s
            JOIN users u ON u.id = s.user_id
-           WHERE s.id = %s AND s.school_id = %s LIMIT 1""",
+           WHERE s.id = %s AND s.school_id = %s AND s.deleted_at IS NULL LIMIT 1""",
         (request.student_id, school_id)
     )
     info = cursor.fetchone()
@@ -154,10 +154,8 @@ def send_teacher_message(
         conn.close()
         raise HTTPException(400, "Parent WhatsApp number not found")
 
-    # Send
     result = send_whatsapp(school_id, info["parent_phone"], request.message)
 
-    # Log
     cursor.execute(
         """INSERT INTO teacher_messages 
            (teacher_id, student_id, parent_phone, message, school_id, status, whatsapp_message_id, error_message)
@@ -188,8 +186,7 @@ def message_history(
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
-    # ✅ Teacher ID dhundo
-    cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT id FROM teachers WHERE user_id = %s AND deleted_at IS NULL", (user_id,))
     teacher = cursor.fetchone()
     if not teacher:
         conn.close()
