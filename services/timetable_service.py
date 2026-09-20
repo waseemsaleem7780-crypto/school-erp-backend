@@ -1,5 +1,6 @@
 from database.db import get_db_connection, get_dict_cursor
 
+
 def create_timetable(class_id: int, section_id: int, subject_id: int, teacher_id: int, day_of_week: str, start_time: str, end_time: str):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
@@ -21,11 +22,28 @@ def create_timetable(class_id: int, section_id: int, subject_id: int, teacher_id
         "end_time": end_time
     }
 
+
 def get_timetable_by_class(class_id: int):
+    """Class ki timetable — subject aur teacher ke naam ke saath."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        "SELECT id, class_id, section_id, subject_id, teacher_id, day_of_week, start_time, end_time FROM timetable WHERE class_id = %s ORDER BY day_of_week",
+        """SELECT 
+              t.id, 
+              t.class_id, 
+              t.section_id, 
+              t.subject_id, 
+              t.teacher_id, 
+              t.day_of_week, 
+              t.start_time, 
+              t.end_time,
+              s.name AS subject_name,
+              tr.qualification AS teacher_name
+           FROM timetable t
+           LEFT JOIN subjects s ON s.id = t.subject_id
+           LEFT JOIN teachers tr ON tr.id = t.teacher_id
+           WHERE t.class_id = %s 
+           ORDER BY t.day_of_week, t.start_time""",
         (class_id,)
     )
     rows = cursor.fetchall()
@@ -38,8 +56,10 @@ def get_timetable_by_class(class_id: int):
             "subject_id": row["subject_id"],
             "teacher_id": row["teacher_id"],
             "day_of_week": row["day_of_week"],
-            "start_time": row["start_time"],
-            "end_time": row["end_time"]
+            "start_time": str(row["start_time"]),
+            "end_time": str(row["end_time"]),
+            "subject_name": row["subject_name"],
+            "teacher_name": row["teacher_name"],
         }
         for row in rows
     ]

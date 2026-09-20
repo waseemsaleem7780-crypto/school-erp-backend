@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 from services.timetable_service import create_timetable, get_timetable_by_class
 from utils.dependencies import get_current_user, get_current_school_id
 
@@ -12,7 +12,7 @@ class TimetableCreateMultiple(BaseModel):
     section_id: int
     subject_id: int
     teacher_id: int
-    days: List[str]           # ✅ Multiple days
+    days: List[str]
     start_time: str
     end_time: str
 
@@ -52,4 +52,5 @@ def get_timetable(
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
+    """Class ki timetable — subject aur teacher ke naam ke saath."""
     return get_timetable_by_class(class_id)
