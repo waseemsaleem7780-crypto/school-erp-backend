@@ -63,5 +63,20 @@ def get_results(
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
-    """Ek student ke saare results."""
+    """
+    Ek student ke saare results.
+    - Student: sirf apna result dekh sakta hai
+    - Admin/Teacher: kisi bhi student ka result dekh sakte hain
+    """
+    role = current_user.get("role")
+
+    # ✅ Security check — student sirf apna result dekhe
+    if role == "student":
+        my_student_id = current_user.get("student_id")
+        if my_student_id != student_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Aap sirf apna result dekh sakte hain"
+            )
+
     return get_results_by_student(student_id)
