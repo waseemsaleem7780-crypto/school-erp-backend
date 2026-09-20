@@ -24,7 +24,7 @@ def create_timetable(class_id: int, section_id: int, subject_id: int, teacher_id
 
 
 def get_timetable_by_class(class_id: int):
-    """Class ki timetable — subject aur teacher ke naam ke saath."""
+    """Class ki timetable — subject aur teacher ke NAAM ke saath."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
@@ -38,10 +38,11 @@ def get_timetable_by_class(class_id: int):
               t.start_time, 
               t.end_time,
               s.name AS subject_name,
-              tr.qualification AS teacher_name
+              COALESCE(tc.full_name, tch.qualification) AS teacher_name
            FROM timetable t
            LEFT JOIN subjects s ON s.id = t.subject_id
-           LEFT JOIN teachers tr ON tr.id = t.teacher_id
+           LEFT JOIN teachers tch ON tch.id = t.teacher_id
+           LEFT JOIN users tc ON tc.id = tch.user_id
            WHERE t.class_id = %s 
            ORDER BY t.day_of_week, t.start_time""",
         (class_id,)
@@ -49,6 +50,7 @@ def get_timetable_by_class(class_id: int):
     rows = cursor.fetchall()
     conn.close()
     return [
+ source /Users/macbookpro/Desktop/attendance/.venv/bin/activate
         {
             "id": row["id"],
             "class_id": row["class_id"],
@@ -58,8 +60,11 @@ def get_timetable_by_class(class_id: int):
             "day_of_week": row["day_of_week"],
             "start_time": str(row["start_time"]),
             "end_time": str(row["end_time"]),
-            "subject_name": row["subject_name"],
-            "teacher_name": row["teacher_name"],
+            "subject_name": row["subject_name"] or f"Subject #{row['subject_id']}",
+            "teacher_name": row["teacher_name"] or f"Teacher #{row['teacher_id']}",
         }
         for row in rows
     ]
+
+
+
