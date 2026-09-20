@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from datetime import datetime, timedelta
@@ -12,6 +12,7 @@ from services.auth_service import (
 )
 from services.audit_service import log_action
 from utils.jwt_handler import create_access_token
+from utils.dependencies import get_current_user
 from database.db import get_db_connection, get_dict_cursor
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -27,7 +28,7 @@ def register_user(user_data: usercreate):
     return result
 
 
-# ============ LOGIN (with Rate Limit + Lockout + Audit) ============
+# ============ LOGIN ============
 @router.post("/login")
 @limiter.limit("5/minute")
 def login_user(request: Request, login_data: userlogin):
@@ -111,7 +112,7 @@ def login_user(request: Request, login_data: userlogin):
                     detail=f"Invalid password. {5 - new_attempts} attempts left.",
                 )
 
-        # 4. ✅ Sahi password — reset attempts + update login info
+        # 4. Sahi password — reset attempts + update login info
         cursor.execute(
             """UPDATE users 
                SET failed_attempts = 0, 
@@ -171,6 +172,41 @@ def login_user(request: Request, login_data: userlogin):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+
+
+# ============ GET CURRENT USER (NEW) ============
+@router.get("/me")
+def get_me(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Current logged-in user ka data.
+    - Student ke liye: student_id, roll_number, class_id, section_id
+    - Teacher ke liye: teacher_id, qualification
+    """
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    user_id = current_user.get("user_id") or current_user.get("id")
+
+    cursor.execute(
+        """SELECT 
+               u.id, u.full_name, u.email, u.role, u.school_id,
+               s.id as student_id, s.roll_number, s.class_id, s.section_id,
+               t.id as teacher_id, t.qualification
+           FROM users u
+           LEFT JOIN students s ON s.user_id = u.id AND s.deleted_at IS NULL
+           LEFT JOIN teachers t ON t.user_id = u.id AND t.deleted_at IS NULL
+           WHERE u.id = %s AND u.deleted_at IS NULL""",
+        (user_id,)
+    )
+    user = cursor.fetchone()
+    conn.close()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return dict(user)
 
 
 # ============ UNLOCK ACCOUNT (Super Admin) ============
