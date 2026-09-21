@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from database.db import init_db
+import os
 
 # ✅ Security (Phase 1)
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -9,7 +10,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from routes.auth import router as auth_router
-from routes.schools import router as schools_router  # NEW
+from routes.schools import router as schools_router
 from routes.classes import router as classes_router
 from routes.sections import router as sections_router
 from routes.subjects import router as subjects_router
@@ -39,7 +40,7 @@ from routes.pdf import router as pdf_router
 from routes.backup import router as backup_router
 from routes import attendance
 from routes import chatbot
-from routes import audit  # ✅ NEW
+from routes import audit
 from routes import broadcast
 from routes import teacher_message
 from routes import whatsapp
@@ -52,11 +53,28 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# ✅ CORS
+# ═══════════════════════════════════════════════════════════════
+#  ✅ CORS — HTTP-Only Cookies support ke liye
+# ═══════════════════════════════════════════════════════════════
+# ⚠️ IMPORTANT: allow_origins=["*"] ke saath credentials KAAM NAHI karta
+# Explicit origins list karo
+
+ALLOWED_ORIGINS = [
+    "https://school-erp-frontend-azure.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+]
+
+# Env var se additional origins add karo (comma-separated)
+extra_origins = os.getenv("CORS_ORIGINS")
+if extra_origins:
+    ALLOWED_ORIGINS.extend([o.strip() for o in extra_origins.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,      # ✅ Cookies allow karo
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
@@ -107,11 +125,12 @@ app.include_router(pdf_router, prefix="/api")
 app.include_router(backup_router, prefix="/api")
 app.include_router(attendance.router, prefix="/api")
 app.include_router(chatbot.router, prefix="/api")
-app.include_router(audit.router, prefix="/api")  # ✅ NEW
+app.include_router(audit.router, prefix="/api")
 app.include_router(broadcast.router, prefix="/api")
 app.include_router(teacher_message.router, prefix="/api")
 app.include_router(whatsapp.router, prefix="/api")
 app.include_router(notification.router, prefix="/api")
+
 
 @app.get("/")
 def home():

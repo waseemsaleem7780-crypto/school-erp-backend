@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Response, Depends
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from datetime import datetime, timedelta
@@ -11,12 +11,46 @@ from services.auth_service import (
     create_new_user,
 )
 from services.audit_service import log_action
-from utils.jwt_handler import create_access_token
+from utils.jwt_handler import create_access_token, create_refresh_token, decode_token
 from utils.dependencies import get_current_user
 from database.db import get_db_connection, get_dict_cursor
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 limiter = Limiter(key_func=get_remote_address)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  COOKIE HELPERS
+# ═══════════════════════════════════════════════════════════════
+
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
+    """HTTP-Only cookies set karo — JavaScript access nahi kar sakta."""
+    # Access token — 15 minutes
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,       # ✅ JavaScript access NAHI
+        secure=True,         # ✅ HTTPS only
+        samesite="lax",      # ✅ CSRF protection
+        max_age=15 * 60,     # 15 minutes
+        path="/",
+    )
+    # Refresh token — 7 days
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,   # 7 days
+        path="/",
+    )
+
+
+def clear_auth_cookies(response: Response):
+    """Logout par cookies clear karo."""
+    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/")
 
 
 # ============ REGISTER ============
@@ -31,42 +65,35 @@ def register_user(user_data: usercreate):
 # ============ LOGIN ============
 @router.post("/login")
 @limiter.limit("5/minute")
-def login_user(request: Request, login_data: userlogin):
+def login_user(request: Request, response: Response, login_data: userlogin):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
     try:
-        # 1. User dhundo
         user = get_user_by_email(login_data.email)
 
         if not user:
             log_action(
-                user_id=None,
-                school_id=None,
-                action="LOGIN_FAILED",
+                user_id=None, school_id=None, action="LOGIN_FAILED",
                 details={"email": login_data.email, "reason": "user_not_found"},
                 ip=request.client.host,
                 user_agent=request.headers.get("user-agent"),
             )
             raise HTTPException(status_code=401, detail="Invalid email or password")
 
-        # 2. Account locked hai?
+        # Account lock check
         if user.get("locked_until") and user["locked_until"] > datetime.now():
             remaining = int((user["locked_until"] - datetime.now()).total_seconds() // 60)
             log_action(
-                user_id=user["id"],
-                school_id=user.get("school_id"),
+                user_id=user["id"], school_id=user.get("school_id"),
                 action="LOGIN_BLOCKED",
                 details={"email": user["email"], "reason": "account_locked"},
                 ip=request.client.host,
                 user_agent=request.headers.get("user-agent"),
             )
-            raise HTTPException(
-                status_code=403,
-                detail=f"Account locked. Try again in {remaining} minutes.",
-            )
+            raise HTTPException(status_code=403, detail=f"Account locked. Try again in {remaining} minutes.")
 
-        # 3. Password verify
+        # Password verify
         is_valid = verify_password(login_data.password, user["password"])
 
         if not is_valid:
@@ -79,40 +106,30 @@ def login_user(request: Request, login_data: userlogin):
                     (new_attempts, lock_until, user["id"]),
                 )
                 conn.commit()
-
                 log_action(
-                    user_id=user["id"],
-                    school_id=user.get("school_id"),
+                    user_id=user["id"], school_id=user.get("school_id"),
                     action="ACCOUNT_LOCKED",
                     details={"email": user["email"], "attempts": new_attempts},
                     ip=request.client.host,
                     user_agent=request.headers.get("user-agent"),
                 )
-                raise HTTPException(
-                    status_code=403,
-                    detail="Account locked for 15 minutes. Too many failed attempts.",
-                )
+                raise HTTPException(status_code=403, detail="Account locked for 15 minutes. Too many failed attempts.")
             else:
                 cursor.execute(
                     "UPDATE users SET failed_attempts = %s WHERE id = %s",
                     (new_attempts, user["id"]),
                 )
                 conn.commit()
-
                 log_action(
-                    user_id=user["id"],
-                    school_id=user.get("school_id"),
+                    user_id=user["id"], school_id=user.get("school_id"),
                     action="LOGIN_FAILED",
                     details={"email": user["email"], "attempts": new_attempts},
                     ip=request.client.host,
                     user_agent=request.headers.get("user-agent"),
                 )
-                raise HTTPException(
-                    status_code=401,
-                    detail=f"Invalid password. {5 - new_attempts} attempts left.",
-                )
+                raise HTTPException(status_code=401, detail=f"Invalid password. {5 - new_attempts} attempts left.")
 
-        # 4. Sahi password — reset attempts + update login info
+        # ✅ Success — reset attempts
         cursor.execute(
             """UPDATE users 
                SET failed_attempts = 0, 
@@ -124,7 +141,7 @@ def login_user(request: Request, login_data: userlogin):
         )
         conn.commit()
 
-        # 5. School slug + institute_type dhundo
+        # School slug + institute_type
         school_slug = None
         institute_type = "school"
         if user.get("school_id"):
@@ -137,33 +154,34 @@ def login_user(request: Request, login_data: userlogin):
                 school_slug = school["subdomain"]
                 institute_type = school["institute_type"] or "school"
 
-        # 6. Audit log — success
         log_action(
-            user_id=user["id"],
-            school_id=user.get("school_id"),
+            user_id=user["id"], school_id=user.get("school_id"),
             action="LOGIN_SUCCESS",
             details={"email": user["email"], "role": user["role"]},
             ip=request.client.host,
             user_agent=request.headers.get("user-agent"),
         )
 
-        # 7. Token payload
+        # ✅ Token payload — sirf user_id, role, school_id
+        # ❌ role sirf reference ke liye — har request par DB se verify hoga
         token_payload = {
             "user_id": user["id"],
-            "role": user["role"],
+            "role": user["role"],       # Reference only — verification DB se
+            "school_id": user.get("school_id"),
+            "school_slug": school_slug,
+            "institute_type": institute_type,
         }
-        if user.get("school_id"):
-            token_payload["school_id"] = user["school_id"]
-        if school_slug:
-            token_payload["school_slug"] = school_slug
-        if institute_type:
-            token_payload["institute_type"] = institute_type
 
-        token = create_access_token(token_payload)
+        # ✅ Access + Refresh tokens banao
+        access_token = create_access_token(token_payload, expires_minutes=15)
+        refresh_token = create_refresh_token(token_payload, expires_days=7)
 
+        # ✅ HTTP-Only Cookies set karo
+        set_auth_cookies(response, access_token, refresh_token)
+
+        # ⚠️ Token response mein NAHI bhejo — sirf user info
         return {
-            "access_token": token,
-            "token_type": "bearer",
+            "success": True,
             "role": user["role"],
             "school_slug": school_slug,
             "institute_type": institute_type,
@@ -179,16 +197,57 @@ def login_user(request: Request, login_data: userlogin):
         conn.close()
 
 
+# ============ REFRESH TOKEN ============
+@router.post("/refresh")
+def refresh_access_token(request: Request, response: Response):
+    """Refresh token se naya access token lo."""
+    refresh_token = request.cookies.get("refresh_token")
+
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="No refresh token")
+
+    try:
+        payload = decode_token(refresh_token)
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+
+        # ✅ Naya access token banao
+        token_payload = {
+            "user_id": payload["user_id"],
+            "role": payload.get("role"),
+            "school_id": payload.get("school_id"),
+            "school_slug": payload.get("school_slug"),
+            "institute_type": payload.get("institute_type"),
+        }
+        new_access_token = create_access_token(token_payload, expires_minutes=15)
+
+        # ✅ Sirf access cookie update karo
+        response.set_cookie(
+            key="access_token",
+            value=new_access_token,
+            httponly=True, secure=True, samesite="lax",
+            max_age=15 * 60, path="/",
+        )
+
+        return {"success": True, "message": "Token refreshed"}
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid refresh token: {str(e)}")
+
+
+# ============ LOGOUT ============
+@router.post("/logout")
+def logout_user(response: Response):
+    """Cookies clear karo."""
+    clear_auth_cookies(response)
+    return {"success": True, "message": "Logged out"}
+
+
 # ============ GET CURRENT USER ============
 @router.get("/me")
-def get_me(
-    current_user: dict = Depends(get_current_user)
-):
+def get_me(current_user: dict = Depends(get_current_user)):
     """
     Current logged-in user ka data.
-    - Student ke liye: student_id, roll_number, class_id, section_id
-    - Teacher ke liye: teacher_id, qualification
-    - Sabke liye: institute_type
+    Role har baar DB se verify hota hai — token se nahi.
     """
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
@@ -222,7 +281,6 @@ def get_me(
 # ============ UNLOCK ACCOUNT (Super Admin) ============
 @router.post("/unlock/{user_id}")
 def unlock_account(user_id: int):
-    """Super admin kisi bhi user ka account unlock kar sakta hai."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
