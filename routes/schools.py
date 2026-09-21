@@ -27,7 +27,7 @@ class SchoolWithAdminCreate(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     subscription_plan: Optional[str] = "trial"
-    # ✅ WhatsApp Config (multi-provider)
+    institute_type: Optional[str] = "school"
     whatsapp_provider: Optional[str] = None
     whatsapp_number: Optional[str] = None
     whatsapp_account_sid: Optional[str] = None
@@ -36,7 +36,12 @@ class SchoolWithAdminCreate(BaseModel):
     whatsapp_phone_id: Optional[str] = None
 
 
-# ============ SCHOOL + ADMIN CREATE (NEW) ============
+class InstituteTypeUpdate(BaseModel):
+    """Super admin school ka mode change kare."""
+    institute_type: str
+
+
+# ============ SCHOOL + ADMIN CREATE ============
 @router.post("/with-admin", status_code=201)
 def add_school_with_admin(
     data: SchoolWithAdminCreate,
@@ -63,16 +68,16 @@ def add_school_with_admin(
         if cursor.fetchone():
             raise HTTPException(status_code=400, detail="Email already exists")
 
-        # 3. School banao (with WhatsApp config)
+        # 3. School banao
         cursor.execute(
             """INSERT INTO schools 
-               (name, subdomain, admin_email, phone, address, subscription_plan,
+               (name, subdomain, admin_email, phone, address, subscription_plan, institute_type,
                 whatsapp_provider, whatsapp_number, whatsapp_account_sid,
                 whatsapp_auth_token, whatsapp_api_key, whatsapp_phone_id) 
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (
                 data.name, data.subdomain, data.admin_email, data.phone,
-                data.address, data.subscription_plan,
+                data.address, data.subscription_plan, data.institute_type or 'school',
                 data.whatsapp_provider, data.whatsapp_number,
                 data.whatsapp_account_sid, data.whatsapp_auth_token,
                 data.whatsapp_api_key, data.whatsapp_phone_id
@@ -91,7 +96,6 @@ def add_school_with_admin(
 
         conn.commit()
 
-        # 5. Login URL banao
         base_url = "https://school-erp-frontend-azure.vercel.app"
         login_url = f"{base_url}/{data.subdomain}/login"
 
@@ -100,6 +104,7 @@ def add_school_with_admin(
             "user_id": user_id,
             "name": data.name,
             "subdomain": data.subdomain,
+            "institute_type": data.institute_type or 'school',
             "login_url": login_url,
             "admin_email": data.admin_email,
             "admin_password": data.admin_password,
@@ -122,7 +127,8 @@ def get_school_by_subdomain(subdomain: str):
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
-        """SELECT id, name, subdomain, is_active 
+        """SELECT id, name, subdomain, is_active,
+                  COALESCE(institute_type, 'school') as institute_type
            FROM schools 
            WHERE subdomain = %s AND deleted_at IS NULL""",
         (subdomain,)
@@ -137,6 +143,85 @@ def get_school_by_subdomain(subdomain: str):
         raise HTTPException(status_code=403, detail="School is inactive")
 
     return dict(school)
+
+
+# ============ CURRENT SCHOOL SETTINGS (ADMIN — READ ONLY) ============
+@router.get("/settings")
+def get_school_settings(
+    current_user: dict = Depends(get_current_user)
+):
+    """Current school ki settings lo — admin sirf read kar sakta hai."""
+    school_id = current_user.get("school_id")
+
+    if not school_id:
+        raise HTTPException(400, "No school assigned")
+
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    cursor.execute(
+        """SELECT id, name, subdomain, phone, address,
+                  COALESCE(institute_type, 'school') as institute_type,
+                  subscription_plan
+           FROM schools 
+           WHERE id = %s AND deleted_at IS NULL""",
+        (school_id,)
+    )
+    school = cursor.fetchone()
+    conn.close()
+
+    if not school:
+        raise HTTPException(404, "School not found")
+
+    return dict(school)
+
+
+# ❌ REMOVED: PUT /settings — admin mode change nahi kar sakta
+
+
+# ============ SUPER ADMIN: CHANGE INSTITUTE TYPE ============
+@router.put("/{school_id}/institute-type")
+def update_institute_type(
+    school_id: int,
+    data: InstituteTypeUpdate,
+    current_user: dict = Depends(require_super_admin)
+):
+    """Sirf super admin school ka mode change kar sakta hai."""
+    if data.institute_type not in ["school", "academy", "college", "madrassa"]:
+        raise HTTPException(400, "Invalid institute_type. Use: school, academy, college, madrassa")
+
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    try:
+        cursor.execute(
+            """UPDATE schools 
+               SET institute_type = %s 
+               WHERE id = %s AND deleted_at IS NULL
+               RETURNING id, name, institute_type""",
+            (data.institute_type, school_id)
+        )
+        result = cursor.fetchone()
+        conn.commit()
+
+        if not result:
+            raise HTTPException(404, "School not found")
+
+        return {
+            "success": True,
+            "message": f"Mode updated to {result['institute_type']}",
+            "school_id": result["id"],
+            "school_name": result["name"],
+            "institute_type": result["institute_type"],
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
 
 
 # ============ GET ALL SCHOOLS ============

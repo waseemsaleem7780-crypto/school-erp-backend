@@ -124,16 +124,18 @@ def login_user(request: Request, login_data: userlogin):
         )
         conn.commit()
 
-        # 5. School slug dhundo
+        # 5. School slug + institute_type dhundo
         school_slug = None
+        institute_type = "school"
         if user.get("school_id"):
             cursor.execute(
-                "SELECT subdomain FROM schools WHERE id = %s",
+                "SELECT subdomain, COALESCE(institute_type, 'school') as institute_type FROM schools WHERE id = %s",
                 (user["school_id"],),
             )
             school = cursor.fetchone()
             if school:
                 school_slug = school["subdomain"]
+                institute_type = school["institute_type"] or "school"
 
         # 6. Audit log — success
         log_action(
@@ -154,6 +156,8 @@ def login_user(request: Request, login_data: userlogin):
             token_payload["school_id"] = user["school_id"]
         if school_slug:
             token_payload["school_slug"] = school_slug
+        if institute_type:
+            token_payload["institute_type"] = institute_type
 
         token = create_access_token(token_payload)
 
@@ -162,6 +166,7 @@ def login_user(request: Request, login_data: userlogin):
             "token_type": "bearer",
             "role": user["role"],
             "school_slug": school_slug,
+            "institute_type": institute_type,
             "user_name": user.get("full_name"),
         }
 
@@ -174,7 +179,7 @@ def login_user(request: Request, login_data: userlogin):
         conn.close()
 
 
-# ============ GET CURRENT USER (NEW) ============
+# ============ GET CURRENT USER ============
 @router.get("/me")
 def get_me(
     current_user: dict = Depends(get_current_user)
@@ -183,6 +188,7 @@ def get_me(
     Current logged-in user ka data.
     - Student ke liye: student_id, roll_number, class_id, section_id
     - Teacher ke liye: teacher_id, qualification
+    - Sabke liye: institute_type
     """
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
@@ -193,10 +199,14 @@ def get_me(
         """SELECT 
                u.id, u.full_name, u.email, u.role, u.school_id,
                s.id as student_id, s.roll_number, s.class_id, s.section_id,
-               t.id as teacher_id, t.qualification
+               t.id as teacher_id, t.qualification,
+               sch.name as school_name,
+               sch.subdomain as school_slug,
+               COALESCE(sch.institute_type, 'school') as institute_type
            FROM users u
            LEFT JOIN students s ON s.user_id = u.id AND s.deleted_at IS NULL
            LEFT JOIN teachers t ON t.user_id = u.id AND t.deleted_at IS NULL
+           LEFT JOIN schools sch ON sch.id = u.school_id
            WHERE u.id = %s AND u.deleted_at IS NULL""",
         (user_id,)
     )

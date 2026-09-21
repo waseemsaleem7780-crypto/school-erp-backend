@@ -40,6 +40,7 @@ class userresponse(BaseModel):
 
 # ============ SCHOOLS ============
 class schoolscreate(BaseModel):
+    """School create/update schema."""
     name: str
     subdomain: Optional[str] = None
     admin_email: Optional[EmailStr] = None
@@ -47,20 +48,7 @@ class schoolscreate(BaseModel):
     address: Optional[str] = None
     subscription_plan: Optional[str] = "trial"
     subscription_expires_at: Optional[date] = None
-    # ✅ WhatsApp fields (optional — Twilio ke liye)
-    whatsapp_number: Optional[str] = None
-    whatsapp_api_key: Optional[str] = None
-    whatsapp_phone_id: Optional[str] = None
-
-
-class schoolscreate(BaseModel):
-    name: str
-    subdomain: Optional[str] = None
-    admin_email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
-    subscription_plan: Optional[str] = "trial"
-    subscription_expires_at: Optional[date] = None
+    institute_type: Optional[str] = "school"     # ✅ NEW: school / academy / college / madrassa
     # ✅ WhatsApp Config
     whatsapp_provider: Optional[str] = None      # 'twilio' / 'wab2c' / 'meta'
     whatsapp_number: Optional[str] = None
@@ -261,8 +249,8 @@ class students(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     password: Optional[str] = None
-    parent_whatsapp: Optional[str] = None   # ✅ Parent WhatsApp
-    parent_name: Optional[str] = None       # ✅ Parent Name
+    parent_whatsapp: Optional[str] = None
+    parent_name: Optional[str] = None
 
 
 class studentsresponse(BaseModel):
