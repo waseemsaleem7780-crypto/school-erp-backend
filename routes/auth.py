@@ -20,19 +20,23 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 # ═══════════════════════════════════════════════════════════════
-#  COOKIE HELPERS
+#  COOKIE HELPERS — Cross-Domain Support
 # ═══════════════════════════════════════════════════════════════
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
-    """HTTP-Only cookies set karo — JavaScript access nahi kar sakta."""
+    """
+    HTTP-Only cookies set karo.
+    ✅ samesite="none" — cross-domain (Vercel → Railway) ke liye ZAROORI
+    ✅ secure=True — HTTPS mandatory
+    """
     # Access token — 15 minutes
     response.set_cookie(
         key="access_token",
         value=access_token,
-        httponly=True,       # ✅ JavaScript access NAHI
-        secure=True,         # ✅ HTTPS only
-        samesite="lax",      # ✅ CSRF protection
-        max_age=15 * 60,     # 15 minutes
+        httponly=True,       # JavaScript access nahi
+        secure=True,         # HTTPS only
+        samesite="none",     # ✅ CRITICAL — cross-domain
+        max_age=15 * 60,
         path="/",
     )
     # Refresh token — 7 days
@@ -41,16 +45,22 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
         value=refresh_token,
         httponly=True,
         secure=True,
-        samesite="lax",
-        max_age=7 * 24 * 60 * 60,   # 7 days
+        samesite="none",     # ✅ CRITICAL
+        max_age=7 * 24 * 60 * 60,
         path="/",
     )
 
 
 def clear_auth_cookies(response: Response):
     """Logout par cookies clear karo."""
-    response.delete_cookie(key="access_token", path="/")
-    response.delete_cookie(key="refresh_token", path="/")
+    response.delete_cookie(
+        key="access_token", path="/",
+        samesite="none", secure=True,
+    )
+    response.delete_cookie(
+        key="refresh_token", path="/",
+        samesite="none", secure=True,
+    )
 
 
 # ============ REGISTER ============
@@ -81,7 +91,6 @@ def login_user(request: Request, response: Response, login_data: userlogin):
             )
             raise HTTPException(status_code=401, detail="Invalid email or password")
 
-        # Account lock check
         if user.get("locked_until") and user["locked_until"] > datetime.now():
             remaining = int((user["locked_until"] - datetime.now()).total_seconds() // 60)
             log_action(
@@ -93,7 +102,6 @@ def login_user(request: Request, response: Response, login_data: userlogin):
             )
             raise HTTPException(status_code=403, detail=f"Account locked. Try again in {remaining} minutes.")
 
-        # Password verify
         is_valid = verify_password(login_data.password, user["password"])
 
         if not is_valid:
@@ -129,7 +137,7 @@ def login_user(request: Request, response: Response, login_data: userlogin):
                 )
                 raise HTTPException(status_code=401, detail=f"Invalid password. {5 - new_attempts} attempts left.")
 
-        # ✅ Success — reset attempts
+        # ✅ Success
         cursor.execute(
             """UPDATE users 
                SET failed_attempts = 0, 
@@ -162,11 +170,10 @@ def login_user(request: Request, response: Response, login_data: userlogin):
             user_agent=request.headers.get("user-agent"),
         )
 
-        # ✅ Token payload — sirf user_id, role, school_id
-        # ❌ role sirf reference ke liye — har request par DB se verify hoga
+        # Token payload
         token_payload = {
             "user_id": user["id"],
-            "role": user["role"],       # Reference only — verification DB se
+            "role": user["role"],
             "school_id": user.get("school_id"),
             "school_slug": school_slug,
             "institute_type": institute_type,
@@ -176,10 +183,10 @@ def login_user(request: Request, response: Response, login_data: userlogin):
         access_token = create_access_token(token_payload, expires_minutes=15)
         refresh_token = create_refresh_token(token_payload, expires_days=7)
 
-        # ✅ HTTP-Only Cookies set karo
+        # ✅ HTTP-Only Cookies set karo (SameSite=None)
         set_auth_cookies(response, access_token, refresh_token)
 
-        # ⚠️ Token response mein NAHI bhejo — sirf user info
+        # Token response mein NAHI — sirf user info
         return {
             "success": True,
             "role": user["role"],
@@ -221,12 +228,15 @@ def refresh_access_token(request: Request, response: Response):
         }
         new_access_token = create_access_token(token_payload, expires_minutes=15)
 
-        # ✅ Sirf access cookie update karo
+        # ✅ SameSite=None ke saath cookie update karo
         response.set_cookie(
             key="access_token",
             value=new_access_token,
-            httponly=True, secure=True, samesite="lax",
-            max_age=15 * 60, path="/",
+            httponly=True,
+            secure=True,
+            samesite="none",     # ✅ CRITICAL
+            max_age=15 * 60,
+            path="/",
         )
 
         return {"success": True, "message": "Token refreshed"}
@@ -245,10 +255,7 @@ def logout_user(response: Response):
 # ============ GET CURRENT USER ============
 @router.get("/me")
 def get_me(current_user: dict = Depends(get_current_user)):
-    """
-    Current logged-in user ka data.
-    Role har baar DB se verify hota hai — token se nahi.
-    """
+    """Current logged-in user ka data."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
