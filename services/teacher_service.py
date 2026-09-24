@@ -21,9 +21,14 @@ def create_teacher(user_id: int, qualification: str, school_id: int):
 
 
 def get_all_teachers(school_id: int):
-    """Teachers with name + email + phone from users table."""
+    """
+    Teachers with name + email + phone + assigned classes.
+    ✅ NEW: Har teacher ke saath assigned_classes bhi aayengi.
+    """
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
+    
+    # ✅ Main query — teachers + user info
     cursor.execute(
         """SELECT 
             t.id, 
@@ -40,19 +45,115 @@ def get_all_teachers(school_id: int):
         (school_id,)
     )
     rows = cursor.fetchall()
-    conn.close()
-    return [
-        {
+
+    # ✅ Har teacher ki classes fetch karo
+    result = []
+    for row in rows:
+        teacher_id = row["id"]
+        
+        # Assigned classes nikalo
+        cursor.execute(
+            """SELECT 
+                ta.class_id,
+                c.name AS class_name
+               FROM teacher_assignments ta
+               JOIN classes c ON c.id = ta.class_id
+               WHERE ta.teacher_id = %s AND ta.school_id = %s
+               ORDER BY c.name""",
+            (teacher_id, school_id)
+        )
+        class_rows = cursor.fetchall()
+        
+        assigned_classes = [
+            {"class_id": cr["class_id"], "class_name": cr["class_name"]}
+            for cr in class_rows
+        ]
+
+        result.append({
             "id": row["id"],
             "user_id": row["user_id"],
             "qualification": row["qualification"],
-            "hired_date": str(row["hired_date"]),
+            "hired_date": str(row["hired_date"]) if row["hired_date"] else None,
             "teacher_name": row["teacher_name"] or f"Teacher #{row['id']}",
             "teacher_email": row["teacher_email"] or "—",
             "teacher_phone": row["teacher_phone"] or "—",
-        }
-        for row in rows
-    ]
+            "assigned_classes": assigned_classes,   # ✅ NEW
+            "assigned_class_ids": [c["class_id"] for c in assigned_classes],   # ✅ Shortcut
+        })
+
+    conn.close()
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════
+#  CLASS ASSIGNMENT HELPERS
+# ═══════════════════════════════════════════════════════════════
+
+def get_teacher_assignments(teacher_id: int, school_id: int):
+    """Ek teacher ki assigned classes nikalo."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+    cursor.execute(
+        """SELECT 
+            ta.id,
+            ta.class_id,
+            ta.section_id,
+            ta.subject_id,
+            c.name AS class_name
+           FROM teacher_assignments ta
+           JOIN classes c ON c.id = ta.class_id
+           WHERE ta.teacher_id = %s AND ta.school_id = %s
+           ORDER BY c.name""",
+        (teacher_id, school_id)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def set_teacher_assignments(teacher_id: int, class_ids: list, school_id: int):
+    """
+    Teacher ki classes set karo — purani hatao, nayi add karo.
+    Return: assigned class IDs list.
+    """
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    try:
+        # ✅ Purani assignments delete karo
+        cursor.execute(
+            "DELETE FROM teacher_assignments WHERE teacher_id = %s AND school_id = %s",
+            (teacher_id, school_id)
+        )
+
+        # ✅ Nayi assignments add karo
+        assigned = []
+        for class_id in class_ids:
+            # Check karo class exist karta hai
+            cursor.execute(
+                "SELECT id FROM classes WHERE id = %s AND school_id = %s",
+                (class_id, school_id)
+            )
+            if not cursor.fetchone():
+                continue  # Skip invalid class
+
+            cursor.execute(
+                """INSERT INTO teacher_assignments 
+                   (teacher_id, class_id, school_id) 
+                   VALUES (%s, %s, %s) RETURNING id""",
+                (teacher_id, class_id, school_id)
+            )
+            assigned.append(class_id)
+
+        conn.commit()
+        return assigned
+
+    except Exception as e:
+        conn.rollback()
+        print(f"set_teacher_assignments error: {e}")
+        raise e
+    finally:
+        conn.close()
 
 
 def update_teacher(teacher_id: int, qualification: str, school_id: int):
