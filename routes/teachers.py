@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from models.schemas import teacherscreate
 from services.teacher_service import (
     create_teacher,
@@ -23,16 +23,17 @@ class TeacherWithUserCreate(BaseModel):
     password: str
     qualification: str
     phone: Optional[str] = None
+    class_ids: Optional[List[int]] = []   # ✅ NEW — assigned classes
 
 
-# ============ NAYA ENDPOINT: User + Teacher ek saath ============
+# ============ NAYA ENDPOINT: User + Teacher + Classes ek saath ============
 @router.post("/create-with-user", status_code=201)
 def create_teacher_with_user(
     data: TeacherWithUserCreate,
     current_user: dict = Depends(get_current_user),
     school_id: int = Depends(get_current_school_id)
 ):
-    """Teacher + User ek saath banao (1 click)."""
+    """Teacher + User + Class Assignments ek saath banao."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
@@ -59,6 +60,31 @@ def create_teacher_with_user(
         )
         teacher_id = cursor.fetchone()["id"]
 
+        # ✅ 4. Class assignments banao — agar teacher_assignments table hai
+        assigned_classes = []
+        if data.class_ids:
+            for class_id in data.class_ids:
+                try:
+                    # Check karo class exist karta hai
+                    cursor.execute(
+                        "SELECT id FROM classes WHERE id = %s AND school_id = %s",
+                        (class_id, school_id)
+                    )
+                    if not cursor.fetchone():
+                        continue  # Skip invalid class
+
+                    # Insert assignment
+                    cursor.execute(
+                        """INSERT INTO teacher_assignments 
+                           (teacher_id, class_id, school_id) 
+                           VALUES (%s, %s, %s) RETURNING id""",
+                        (teacher_id, class_id, school_id)
+                    )
+                    assigned_classes.append(class_id)
+                except Exception as e:
+                    print(f"Class assignment failed for class {class_id}: {e}")
+                    # Continue — teacher toh ban gaya
+
         conn.commit()
 
         return {
@@ -68,11 +94,88 @@ def create_teacher_with_user(
             "email": data.email,
             "qualification": data.qualification,
             "phone": data.phone,
-            "message": f"Teacher {data.full_name} created successfully!"
+            "assigned_classes": assigned_classes,
+            "message": f"Teacher {data.full_name} created with {len(assigned_classes)} class(es)!"
         }
     except HTTPException:
         conn.rollback()
         raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+# ============ Get Teacher Classes ============
+@router.get("/{teacher_id}/classes")
+def get_teacher_classes(
+    teacher_id: int,
+    current_user: dict = Depends(get_current_user),
+    school_id: int = Depends(get_current_school_id)
+):
+    """Ek teacher ki assigned classes nikalo."""
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    try:
+        cursor.execute(
+            """SELECT ta.id, ta.class_id, c.name AS class_name
+               FROM teacher_assignments ta
+               JOIN classes c ON c.id = ta.class_id
+               WHERE ta.teacher_id = %s AND ta.school_id = %s
+               ORDER BY c.name""",
+            (teacher_id, school_id)
+        )
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"Get teacher classes error: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+# ============ Update Teacher Classes ============
+@router.put("/{teacher_id}/classes")
+def update_teacher_classes(
+    teacher_id: int,
+    data: dict,
+    current_user: dict = Depends(get_current_user),
+    school_id: int = Depends(get_current_school_id)
+):
+    """Teacher ki classes update karo — purani hatao, nayi add karo."""
+    if current_user.get("role") not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Only admin can update")
+
+    class_ids = data.get("class_ids", [])
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    try:
+        # Purani assignments delete karo
+        cursor.execute(
+            "DELETE FROM teacher_assignments WHERE teacher_id = %s AND school_id = %s",
+            (teacher_id, school_id)
+        )
+
+        # Nayi assignments add karo
+        assigned = []
+        for class_id in class_ids:
+            cursor.execute(
+                """INSERT INTO teacher_assignments 
+                   (teacher_id, class_id, school_id) 
+                   VALUES (%s, %s, %s) RETURNING id""",
+                (teacher_id, class_id, school_id)
+            )
+            assigned.append(class_id)
+
+        conn.commit()
+
+        return {
+            "message": f"Updated to {len(assigned)} class(es)",
+            "assigned_classes": assigned
+        }
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -93,7 +196,6 @@ def add_teacher(
         school_id
     )
 
-    # Phone update
     phone = getattr(teacher_data, "phone", None)
     if phone:
         conn = get_db_connection()
@@ -164,6 +266,7 @@ def edit_teacher(
     conn.close()
 
     return result
+
 
 @router.delete("/{teacher_id}")
 def remove_teacher(
