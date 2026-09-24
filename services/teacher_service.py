@@ -23,12 +23,10 @@ def create_teacher(user_id: int, qualification: str, school_id: int):
 def get_all_teachers(school_id: int):
     """
     Teachers with name + email + phone + assigned classes.
-    ✅ NEW: Har teacher ke saath assigned_classes bhi aayengi.
     """
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
-    
-    # ✅ Main query — teachers + user info
+
     cursor.execute(
         """SELECT 
             t.id, 
@@ -46,11 +44,10 @@ def get_all_teachers(school_id: int):
     )
     rows = cursor.fetchall()
 
-    # ✅ Har teacher ki classes fetch karo
     result = []
     for row in rows:
         teacher_id = row["id"]
-        
+
         # Assigned classes nikalo
         cursor.execute(
             """SELECT 
@@ -63,7 +60,7 @@ def get_all_teachers(school_id: int):
             (teacher_id, school_id)
         )
         class_rows = cursor.fetchall()
-        
+
         assigned_classes = [
             {"class_id": cr["class_id"], "class_name": cr["class_name"]}
             for cr in class_rows
@@ -77,8 +74,8 @@ def get_all_teachers(school_id: int):
             "teacher_name": row["teacher_name"] or f"Teacher #{row['id']}",
             "teacher_email": row["teacher_email"] or "—",
             "teacher_phone": row["teacher_phone"] or "—",
-            "assigned_classes": assigned_classes,   # ✅ NEW
-            "assigned_class_ids": [c["class_id"] for c in assigned_classes],   # ✅ Shortcut
+            "assigned_classes": assigned_classes,
+            "assigned_class_ids": [c["class_id"] for c in assigned_classes],
         })
 
     conn.close()
@@ -86,11 +83,60 @@ def get_all_teachers(school_id: int):
 
 
 # ═══════════════════════════════════════════════════════════════
+#  ✅ NEW — Logged-in teacher ki assigned classes (via user_id)
+# ═══════════════════════════════════════════════════════════════
+
+def get_teacher_classes_by_user(user_id: int, school_id: int):
+    """
+    Logged-in teacher ki assigned classes nikalo — user_id se.
+    Ye function /teachers/my-classes endpoint use karta hai.
+    """
+    conn = get_db_connection()
+    cursor = get_dict_cursor(conn)
+
+    try:
+        # Pehle teacher_id dhundo
+        cursor.execute(
+            "SELECT id FROM teachers WHERE user_id = %s AND deleted_at IS NULL",
+            (user_id,)
+        )
+        teacher = cursor.fetchone()
+
+        if not teacher:
+            return []
+
+        teacher_id = teacher["id"]
+
+        # Assigned classes nikalo
+        cursor.execute(
+            """SELECT DISTINCT 
+                c.id,
+                c.name
+               FROM teacher_assignments ta
+               JOIN classes c ON c.id = ta.class_id
+               WHERE ta.teacher_id = %s AND ta.school_id = %s
+               ORDER BY c.name""",
+            (teacher_id, school_id)
+        )
+        rows = cursor.fetchall()
+
+        return [
+            {"id": r["id"], "name": r["name"]}
+            for r in rows
+        ]
+    except Exception as e:
+        print(f"get_teacher_classes_by_user error: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════
 #  CLASS ASSIGNMENT HELPERS
 # ═══════════════════════════════════════════════════════════════
 
 def get_teacher_assignments(teacher_id: int, school_id: int):
-    """Ek teacher ki assigned classes nikalo."""
+    """Ek teacher ki assigned classes nikalo — via teacher_id."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     cursor.execute(
@@ -112,30 +158,24 @@ def get_teacher_assignments(teacher_id: int, school_id: int):
 
 
 def set_teacher_assignments(teacher_id: int, class_ids: list, school_id: int):
-    """
-    Teacher ki classes set karo — purani hatao, nayi add karo.
-    Return: assigned class IDs list.
-    """
+    """Teacher ki classes set karo — purani hatao, nayi add karo."""
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
 
     try:
-        # ✅ Purani assignments delete karo
         cursor.execute(
             "DELETE FROM teacher_assignments WHERE teacher_id = %s AND school_id = %s",
             (teacher_id, school_id)
         )
 
-        # ✅ Nayi assignments add karo
         assigned = []
         for class_id in class_ids:
-            # Check karo class exist karta hai
             cursor.execute(
                 "SELECT id FROM classes WHERE id = %s AND school_id = %s",
                 (class_id, school_id)
             )
             if not cursor.fetchone():
-                continue  # Skip invalid class
+                continue
 
             cursor.execute(
                 """INSERT INTO teacher_assignments 
