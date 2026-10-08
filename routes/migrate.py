@@ -219,3 +219,66 @@ def migrate_teacher_assignments():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/student-parent-columns")
+def add_student_parent_columns():
+    """Students table mein parent_whatsapp + parent_name columns add karo + guardians se populate."""
+    try:
+        conn = get_db_connection()
+        conn.autocommit = True
+        cur = get_dict_cursor(conn)
+
+        results = []
+
+        # 1. Columns add
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_whatsapp VARCHAR(20)")
+        results.append("parent_whatsapp added")
+
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_name VARCHAR(255)")
+        results.append("parent_name added")
+
+        # 2. Guardians se populate karo
+        cur.execute("""
+            UPDATE students s
+            SET parent_whatsapp = g.phone_number,
+                parent_name = g.full_name
+            FROM guardians g
+            WHERE g.student_id = s.id
+              AND (s.parent_whatsapp IS NULL OR s.parent_name IS NULL)
+        """)
+        results.append(f"{cur.rowcount} students updated from guardians")
+
+        # 3. Verify
+        cur.execute("""
+            SELECT COUNT(*) as cnt FROM students 
+            WHERE parent_whatsapp IS NOT NULL
+        """)
+        count = cur.fetchone()["cnt"]
+        results.append(f"{count} students have parent contact")
+
+        # 4. teacher_messages table check
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS teacher_messages (
+                id SERIAL PRIMARY KEY,
+                teacher_id INTEGER,
+                student_id INTEGER,
+                parent_phone VARCHAR(20),
+                message TEXT,
+                school_id INTEGER,
+                status VARCHAR(50),
+                whatsapp_message_id VARCHAR(100),
+                error_message TEXT,
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        results.append("teacher_messages table created")
+
+        conn.close()
+
+        return {
+            "success": True,
+            "message": "Student parent columns migration complete!",
+            "steps": results,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
