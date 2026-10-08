@@ -45,6 +45,7 @@ from routes import broadcast
 from routes import teacher_message
 from routes import whatsapp
 from routes import notification
+from routes.agent import router as agent_router
 
 app = FastAPI(title="School ERP System", version="1.0")
 
@@ -130,6 +131,7 @@ app.include_router(broadcast.router, prefix="/api")
 app.include_router(teacher_message.router, prefix="/api")
 app.include_router(whatsapp.router, prefix="/api")
 app.include_router(notification.router, prefix="/api")
+app.include_router(agent_router, prefix="/api")
 
 
 @app.get("/")
