@@ -33,47 +33,41 @@ class TeacherWithUserCreate(BaseModel):
 @router.get("/my-classes")
 def get_my_classes(
     current_user: dict = Depends(get_current_user),
-    school_id: int = Depends(get_current_school_id)
 ):
-    """Logged-in teacher ki assigned classes."""
+    """Logged-in teacher ki assigned classes — timetable se."""
     user_id = current_user.get("user_id") or current_user.get("id")
     
     conn = get_db_connection()
     cursor = get_dict_cursor(conn)
     
     try:
-        # Teacher ID dhundo
-        cursor.execute(
-            "SELECT id FROM teachers WHERE user_id = %s AND deleted_at IS NULL",
-            (user_id,)
-        )
+        cursor.execute("SELECT id FROM teachers WHERE user_id = %s", (user_id,))
         teacher = cursor.fetchone()
         
         if not teacher:
+            print(f"No teacher found for user_id: {user_id}")
             return []
         
         teacher_id = teacher["id"]
+        print(f"Found teacher_id: {teacher_id}")
         
-        # Assigned classes nikalo
         cursor.execute(
-            """SELECT DISTINCT
-                c.id,
-                c.name
-               FROM teacher_assignments ta
-               JOIN classes c ON c.id = ta.class_id
-               WHERE ta.teacher_id = %s AND ta.school_id = %s
+            """SELECT DISTINCT c.id, c.name
+               FROM timetable t
+               JOIN classes c ON c.id = t.class_id
+               WHERE t.teacher_id = %s
                ORDER BY c.name""",
-            (teacher_id, school_id)
+            (teacher_id,)
         )
         rows = cursor.fetchall()
-        
+        print(f"Found {len(rows)} classes")
         return [{"id": r["id"], "name": r["name"]} for r in rows]
-        
     except Exception as e:
         print(f"my-classes error: {e}")
         return []
     finally:
         conn.close()
+
 
 
 # ============ TEACHER + USER + CLASSES ============
