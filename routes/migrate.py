@@ -282,3 +282,55 @@ def add_student_parent_columns():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/diagnose")
+def diagnose_data():
+    """Diagnose: classes, students, teachers, assignments sab check karo."""
+    try:
+        conn = get_db_connection()
+        cur = get_dict_cursor(conn)
+
+        result = {}
+
+        # Classes
+        cur.execute("SELECT id, name FROM classes ORDER BY id")
+        result["classes"] = [dict(r) for r in cur.fetchall()]
+
+        # Students per class
+        cur.execute("""
+            SELECT c.id as class_id, c.name as class_name, 
+                   COUNT(s.id) as student_count
+            FROM classes c
+            LEFT JOIN students s ON s.class_id = c.id
+            GROUP BY c.id, c.name
+            ORDER BY c.id
+        """)
+        result["students_per_class"] = [dict(r) for r in cur.fetchall()]
+
+        # Teacher assignments
+        cur.execute("""
+            SELECT ta.id, ta.teacher_id, ta.class_id, ta.section_id,
+                   c.name as class_name, s.name as section_name
+            FROM teacher_assignments ta
+            LEFT JOIN classes c ON c.id = ta.class_id
+            LEFT JOIN sections s ON s.id = ta.section_id
+            ORDER BY ta.teacher_id
+        """)
+        result["teacher_assignments"] = [dict(r) for r in cur.fetchall()]
+
+        # Sections
+        cur.execute("SELECT id, name, class_id FROM sections ORDER BY class_id")
+        result["sections"] = [dict(r) for r in cur.fetchall()]
+
+        # Users (teachers)
+        cur.execute("SELECT id, full_name, email, role FROM users WHERE role = 'teacher'")
+        result["teachers_users"] = [dict(r) for r in cur.fetchall()]
+
+        # Teachers table
+        cur.execute("SELECT id, user_id FROM teachers")
+        result["teachers_table"] = [dict(r) for r in cur.fetchall()]
+
+        conn.close()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
