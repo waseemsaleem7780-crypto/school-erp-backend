@@ -135,3 +135,87 @@ def seed_teacher_data():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/teacher-assignments")
+def migrate_teacher_assignments():
+    """
+    Teachers table mein missing columns add karo + teacher_assignments table banao.
+    Timetable se data populate karo.
+    """
+    try:
+        conn = get_db_connection()
+        conn.autocommit = True
+        cur = get_dict_cursor(conn)
+
+        results = []
+
+        # 1. teachers table mein columns add karo
+        cur.execute("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS school_id INTEGER DEFAULT 1")
+        results.append("school_id added")
+
+        cur.execute("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP")
+        results.append("deleted_at added")
+
+        cur.execute("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS phone VARCHAR(20)")
+        results.append("phone added")
+
+        # 2. users table mein bhi school_id + phone (agar missing)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS school_id INTEGER DEFAULT 1")
+        results.append("users.school_id added")
+
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20)")
+        results.append("users.phone added")
+
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
+        results.append("users.is_active added")
+
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP")
+        results.append("users.deleted_at added")
+
+        # 3. classes table mein school_id
+        cur.execute("ALTER TABLE classes ADD COLUMN IF NOT EXISTS school_id INTEGER DEFAULT 1")
+        results.append("classes.school_id added")
+
+        # 4. subjects mein school_id
+        cur.execute("ALTER TABLE subjects ADD COLUMN IF NOT EXISTS school_id INTEGER DEFAULT 1")
+        results.append("subjects.school_id added")
+
+        # 5. students mein school_id
+        cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS school_id INTEGER DEFAULT 1")
+        results.append("students.school_id added")
+
+        # 6. teacher_assignments table banao
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS teacher_assignments (
+                id SERIAL PRIMARY KEY,
+                teacher_id INTEGER NOT NULL,
+                class_id INTEGER NOT NULL,
+                section_id INTEGER,
+                subject_id INTEGER,
+                school_id INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        results.append("teacher_assignments table created")
+
+        # 7. Timetable se teacher assignments populate karo
+        cur.execute("DELETE FROM teacher_assignments")
+        cur.execute("""
+            INSERT INTO teacher_assignments (teacher_id, class_id, section_id, subject_id, school_id)
+            SELECT DISTINCT teacher_id, class_id, section_id, subject_id, 1
+            FROM timetable
+            WHERE teacher_id IS NOT NULL AND class_id IS NOT NULL
+        """)
+        cur.execute("SELECT COUNT(*) as cnt FROM teacher_assignments")
+        count = cur.fetchone()["cnt"]
+        results.append(f"{count} assignments populated from timetable")
+
+        conn.close()
+
+        return {
+            "success": True,
+            "message": "Teacher assignments migration complete!",
+            "steps": results,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
